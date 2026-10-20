@@ -78,10 +78,13 @@ jobs:
               -o -name 'libcleanfield.dylib' \) -exec cp {} dist/${{ matrix.name }}/ \;
           fi
           cp include/cleanfield.h dist/${{ matrix.name }}/
+          # One archive per platform: release assets share a flat namespace, so
+          # loose files with the same basename would overwrite each other.
+          tar -czf "dist/${{ matrix.name }}.tar.gz" -C "dist/${{ matrix.name }}" .
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.name }}
-          path: dist/${{ matrix.name }}
+          path: dist/${{ matrix.name }}.tar.gz
 
   wasm:
     runs-on: ubuntu-latest
@@ -113,8 +116,9 @@ jobs:
         run: |
           for abi in arm64-v8a armeabi-v7a x86_64; do
             cargo ndk -t $abi -o dist/android/$abi build --release -p cf-ffi
+            tar -czf "dist/android-$abi.tar.gz" -C "dist/android/$abi" .
           done
-          cp include/cleanfield.h dist/android/
+          tar -czf "dist/cleanfield.h.tar.gz" -C include cleanfield.h
       - uses: actions/upload-artifact@v4
         with:
           name: android
@@ -133,6 +137,7 @@ jobs:
           cp target/aarch64-apple-ios/release/libcleanfield.a dist/ios/libcleanfield-device.a
           cp target/aarch64-apple-ios-sim/release/libcleanfield.a dist/ios/libcleanfield-sim.a
           cp include/cleanfield.h dist/ios/
+          tar -czf "dist/ios.tar.gz" -C dist/ios .
       - uses: actions/upload-artifact@v4
         with:
           name: ios
@@ -262,6 +267,7 @@ jobs:
           files: |
             dist/**/*
             dist/SHA256SUMS
+
 
 
 
