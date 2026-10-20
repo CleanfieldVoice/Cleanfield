@@ -2,7 +2,7 @@
   "name": "@cleanfield/node",
   "version": "0.1.0",
   "description": "CleanField real-time speech enhancement engine for Node.js: prebuilt native addon, no node-gyp.",
-  "license": "UNLICENSED",
+  "license": "MIT",
   "author": "CleanField",
   "main": "index.js",
   "types": "index.d.ts",
@@ -23,8 +23,7 @@
     "index.d.ts",
     "scripts/",
     "prebuilds/",
-    "models/voice-default.cfwm",
-    "README.md"
+    "models/voice-default.cfwm"
   ],
   "scripts": {
     "prepack": "node scripts/prepare-model.mjs",
@@ -41,7 +40,7 @@
     "@cleanfield/node-linux-arm64": "0.1.0"
   },
   "cleanfield": {
-    "releaseBaseUrl": "https://github.com/cleanfield/cleanfield/releases/download",
+    "releaseBaseUrl": "https://github.com/CleanfieldVoice/Cleanfield/releases/download",
     "model": "models/voice-default.cfwm"
   },
   "keywords": [
@@ -52,3 +51,4 @@
     "native-addon"
   ]
 }
+

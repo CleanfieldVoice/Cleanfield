@@ -138,8 +138,65 @@ jobs:
           name: ios
           path: dist/ios
 
+  node-addon:
+    name: node addon (${{ matrix.name }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: windows-latest, target: x86_64-pc-windows-msvc,  name: win32-x64,    asset: cf-node-win32-x64.node }
+          - { os: windows-latest, target: aarch64-pc-windows-msvc, name: win32-arm64,  asset: cf-node-win32-arm64.node }
+          - { os: macos-latest,   target: universal-apple-darwin,  name: darwin-univ,  asset: cf-node-darwin-universal.node }
+          - { os: ubuntu-latest,  target: x86_64-unknown-linux-gnu, name: linux-x64,   asset: cf-node-linux-x64.node }
+          - { os: ubuntu-latest,  target: aarch64-unknown-linux-gnu, name: linux-arm64, asset: cf-node-linux-arm64.node }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Install target
+        if: matrix.target != 'universal-apple-darwin'
+        run: rustup target add ${{ matrix.target }}
+      - name: Add macOS targets
+        if: matrix.target == 'universal-apple-darwin'
+        run: rustup target add x86_64-apple-darwin aarch64-apple-darwin
+      - name: Install cross linker (linux arm64)
+        if: matrix.target == 'aarch64-unknown-linux-gnu'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-aarch64-linux-gnu
+      - name: Build addon
+        shell: bash
+        env:
+          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
+        run: |
+          if [ "${{ matrix.target }}" = "universal-apple-darwin" ]; then
+            cargo build --release -p cf-node --target x86_64-apple-darwin
+            cargo build --release -p cf-node --target aarch64-apple-darwin
+          else
+            cargo build --release -p cf-node --target ${{ matrix.target }}
+          fi
+      - name: Package addon
+        shell: bash
+        run: |
+          mkdir -p dist
+          case "${{ matrix.name }}" in
+            win32-*)
+              src="target/${{ matrix.target }}/release/cf_node.dll" ;;
+            darwin-*)
+              lipo -create -output "dist/${{ matrix.asset }}" \
+                target/x86_64-apple-darwin/release/libcf_node.dylib \
+                target/aarch64-apple-darwin/release/libcf_node.dylib
+              exit 0 ;;
+            *)
+              src="target/${{ matrix.target }}/release/libcf_node.so" ;;
+          esac
+          cp "$src" "dist/${{ matrix.asset }}"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.asset }}
+          path: dist/${{ matrix.asset }}
   publish:
-    needs: [build, wasm, android, ios]
+    needs: [build, wasm, android, ios, node-addon]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
@@ -153,6 +210,7 @@ jobs:
           files: |
             dist/**/*
             dist/SHA256SUMS
+
 
 
 
