@@ -122,7 +122,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: android
-          path: dist/android
+          path: dist/*.tar.gz
 
   ios:
     runs-on: macos-latest
@@ -141,7 +141,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: ios
-          path: dist/ios
+          path: dist/ios.tar.gz
 
   node-addon:
     name: node addon (${{ matrix.name }})
@@ -268,8 +268,12 @@ jobs:
         with:
           generate_release_notes: true
           files: |
-            dist/**/*
+            dist/**/*.tar.gz
+            dist/**/*.node
+            dist/**/cf_wasm.wasm
+            dist/**/worklet-processor.js
             dist/SHA256SUMS
+
 
 
 
