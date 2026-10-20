@@ -762,7 +762,10 @@
         display: block;
       }
 
-      .footer span + span {
+      .footer-link { color: #0b63ce; text-decoration: none; }
+    .footer-link:hover { text-decoration: underline; }
+
+    .footer span + span {
         margin-top: 4px;
       }
     }
@@ -942,6 +945,7 @@
     <footer class="footer">
       <span>All processing happens in your browser</span>
       <span>16 kHz mono · fixed 80 ms latency removed from file output</span>
+      <span><a class="footer-link" href="listen.html">Listen to before/after examples →</a></span>
     </footer>
   </main>
 
@@ -949,3 +953,4 @@
   <script type="module" src="./app.js"></script>
 </body>
 </html>
+
