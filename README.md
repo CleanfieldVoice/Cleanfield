@@ -15,19 +15,12 @@ Neural speech enhancement for real-time audio: **noise suppression** and
   reference frame for frame.
 
 ## Demo
-**Listen:** [`web/listen.html`](web/listen.html) - the demo's examples page, with every
-before/after pair embedded (Chinese first, then English, then echo cancellation). It is
 
-linked from the demo footer and opens from a local server or any static host.
-Eight-second excerpts, 16 kHz mono PCM16, Chinese speech first with English
-counterparts. Use headphones.
+[Live demo](https://cleanfieldvoice.github.io/Cleanfield/web/) · [Before/after examples](https://cleanfieldvoice.github.io/Cleanfield/web/listen.html)
 
-Every clip is produced by this project: the speech is synthesized, the noise is
-generated from seeded sources at a measured SNR, and the "after" clip is the
-engine in this repository (Rust backend for noise suppression, `cf-echo-pipeline`
-for echo cancellation). The last column is the level drop in the pauses between
-sentences — that is where a noise suppressor has to act — while the speech itself
-moves by less than 0.2 dB in every noise clip.
+Eleven before/after pairs, 8 s each, 16 kHz mono PCM16: five noise types in Chinese, five in English, plus one echo-cancellation pair. Use headphones.
+
+Every clip is produced by this project: the speech is synthesised, the noise is generated from seeded sources at a measured SNR, and the "after" clip is the engine in this repository. The last column is the level drop in the pauses between sentences - where a noise suppressor has to act - while the speech itself moves by less than 0.2 dB.
 
 **Noise suppression**
 
@@ -70,21 +63,18 @@ Spectrograms of the noise-suppression (Chinese babble) and echo scenes
 
 ## Models
 
-| Component | Layers | Input → output | Task |
-| --- | --- | --- | --- |
-| **CleanField Voice** | 19 | 513 → 1026 | Noise suppression on a 16 kHz log-power spectrum (0–8 kHz) |
-| **CleanField Echo** | 89 | 3 × 513 → 513 | Residual echo suppression, given a linear residual, the microphone and the reference |
-| **Linear AEC** | — | 2 × 256 → 256 | Partitioned-block frequency-domain adaptive filter, 2048 taps |
-The neural models are bit-exact against their reference implementation. The
-linear AEC is an independent implementation and has no oracle, so it is
-validated functionally: 159 designed scenes plus **216 runs over 18 measured
-room impulses** (RT20 0.09–1.05 s). Echo return loss averages **17.6 dB (clean)
-and 16.2 dB over all conditions**; short rooms reach 28 dB, rooms longer than
-0.7 s fall to 9 dB, worst case 6.5 dB. No collapses, no divergence, near-end
-loss < 0.3 dB, 0 allocations, ~0.2 ms/frame. Measured rooms score 4.1 dB below
-the synthetic grid, so treat the synthetic numbers as an upper bound. See
-`crates/cf-aec/ROBUSTNESS.md`.
-Latency: AEC adds one 16 ms frame; the neural stage adds a 768-sample window plus 256 samples of look-ahead — 1280 samples (80 ms) in total.
+| Model | Status | Layers | Input → output | Task |
+| --- | --- | --- | --- | --- |
+| **CleanField Voice** | stable | 19 | 513 → 1026 | Noise suppression on a 16 kHz log-power spectrum (0–8 kHz) |
+| **CleanField Echo** | **alpha** | 89 | 3 × 513 → 513 | Residual echo suppression, given a linear residual, the microphone and the reference |
+
+Both models run at 16 kHz, mono, on 16 ms hops and keep state across frames (one instance per stream). Their neural graphs are bit-exact against the reference implementation.
+
+**Echo is alpha.** The model is bit-exact, but the path around it is young: the linear AEC is an independent implementation with no oracle, results are validated on synthetic scenes and 18 measured room impulses (17.6 dB mean clean, 6.5 dB worst) rather than real speaker-to-microphone hardware, and the browser demo ships noise suppression only. Expect its API and defaults to change.
+
+**Linear AEC** (stage, not a model): partitioned-block frequency-domain adaptive filter, 2048 taps, zero allocations, ~0.2 ms per frame. Measured rooms score 4.1 dB below the synthetic grid, so treat synthetic numbers as an upper bound; see `crates/cf-aec/ROBUSTNESS.md`.
+
+Latency: the AEC adds one 16 ms frame; the neural stage adds a 768-sample window plus 256 samples of look-ahead - 1280 samples (80 ms) in total.
 
 ## Performance
 
