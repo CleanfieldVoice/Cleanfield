@@ -7,6 +7,10 @@ name: release
 permissions:
   contents: write
 
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: true
+
 on:
   push:
     tags: ["v*"]
@@ -149,6 +153,7 @@ jobs:
           files: |
             dist/**/*
             dist/SHA256SUMS
+
 
 
 

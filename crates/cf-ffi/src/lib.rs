@@ -584,6 +584,12 @@ pub unsafe extern "C" fn cf_echo_model_bytes(handle: *const cf_model) -> u32 {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Mutex;
+
+    // LAST_ERROR is process-global, so the tests that inspect it must not run
+    // concurrently with each other.
+    static TEST_LOCK: Mutex<()> = Mutex::new(());
+
     use super::*;
 
     const VOICE_BYTES: &[u8] = include_bytes!(concat!(
@@ -613,6 +619,7 @@ mod tests {
 
     #[test]
     fn abi_version_and_static_lengths() {
+        let _guard = TEST_LOCK.lock().unwrap();
         assert_eq!(cf_abi_version(), 1);
         assert_eq!(cf_voice_input_len(), 513);
         assert_eq!(cf_voice_output_len(), 1026);
@@ -626,6 +633,7 @@ mod tests {
 
     #[test]
     fn voice_typed_and_unified_paths_are_bit_identical() {
+        let _guard = TEST_LOCK.lock().unwrap();
         let frame = voice_frame();
         let typed = unsafe { cf_voice_new(VOICE_BYTES.as_ptr(), VOICE_BYTES.len()) };
         assert!(!typed.is_null(), "last error {}", cf_last_error());
@@ -672,6 +680,7 @@ mod tests {
 
     #[test]
     fn voice_matches_the_direct_model_bits() {
+        let _guard = TEST_LOCK.lock().unwrap();
         let frame = voice_frame();
         let mut reference =
             VoiceModel::with_backend(VOICE_BYTES, Backend::detect()).expect("voice model");
@@ -692,6 +701,7 @@ mod tests {
 
     #[test]
     fn echo_typed_and_unified_paths_are_bit_identical() {
+        let _guard = TEST_LOCK.lock().unwrap();
         let frame = echo_frame();
         let typed = unsafe { cf_echo_new(ECHO_BYTES.as_ptr(), ECHO_BYTES.len()) };
         assert!(!typed.is_null(), "last error {}", cf_last_error());
@@ -727,6 +737,7 @@ mod tests {
 
     #[test]
     fn echo_matches_the_direct_avx2_model_bits() {
+        let _guard = TEST_LOCK.lock().unwrap();
         let frame = echo_frame();
         let mut reference =
             EchoModel::with_backend(ECHO_BYTES, Backend::Avx2).expect("avx2 echo model");
@@ -748,6 +759,7 @@ mod tests {
 
     #[test]
     fn scalar_backend_selection_is_honoured() {
+        let _guard = TEST_LOCK.lock().unwrap();
         let frame = voice_frame();
         let handle = unsafe {
             cf_voice_new_with_backend(VOICE_BYTES.as_ptr(), VOICE_BYTES.len(), CF_BACKEND_SCALAR)
@@ -766,6 +778,7 @@ mod tests {
 
     #[test]
     fn rejects_bad_arguments_and_wrong_types() {
+        let _guard = TEST_LOCK.lock().unwrap();
         assert!(unsafe { cf_voice_new(ptr::null(), 0) }.is_null());
         assert_eq!(cf_last_error(), CF_ERR_ARG);
         assert!(unsafe { cf_voice_new(VOICE_BYTES.as_ptr(), VOICE_BYTES.len() - 1) }.is_null());
