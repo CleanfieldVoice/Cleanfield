@@ -1,0 +1,12 @@
+[package]
+name = "cf-aec"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "Linear acoustic echo canceller front end (partitioned-block frequency-domain adaptive filter)"
+
+[dependencies]
+
+[lints]
+workspace = true

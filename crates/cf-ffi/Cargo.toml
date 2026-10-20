@@ -1,0 +1,21 @@
+[package]
+name = "cf-ffi"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lib]
+# The C consumers link `cleanfield.lib` (static) or `cleanfield.dll` +
+# `cleanfield.dll.lib` (dynamic).  The rlib is kept for the in-crate unit tests
+# and for Rust hosts that prefer a normal crate dependency.
+name = "cleanfield"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[dependencies]
+cf-core = { workspace = true }
+cf-voice.workspace = true
+cf-echo.workspace = true
+
+[lints]
+workspace = true

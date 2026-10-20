@@ -1,0 +1,11 @@
+target/
+target-fma/
+**/*.node
+packages/node/prebuilds/
+conformance/last-result*.json
+__pycache__/
+*.pyc
+*.obj
+*.lib
+*.exp
+*.pdb

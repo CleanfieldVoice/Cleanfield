@@ -1,0 +1,14 @@
+[workspace]
+
+[package]
+name = "echo_driver"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+cf-echo-pipeline = { path = "../../../crates/cf-echo-pipeline" }
+
+[[bin]]
+name = "echo_driver"
+path = "src/main.rs"

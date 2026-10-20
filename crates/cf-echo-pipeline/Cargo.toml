@@ -1,0 +1,17 @@
+[package]
+name = "cf-echo-pipeline"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "End-to-end echo cancellation: linear AEC followed by the neural echo model"
+
+[dependencies]
+cf-aec.workspace = true
+cf-echo.workspace = true
+
+[dev-dependencies]
+cf-voice.workspace = true
+
+[lints]
+workspace = true

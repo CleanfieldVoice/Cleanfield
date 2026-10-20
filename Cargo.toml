@@ -1,0 +1,52 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/cf-core",
+    "crates/cf-voice",
+    "crates/cf-cli",
+    "crates/cf-echo",
+    "crates/cf-aec",
+    "crates/cf-echo-pipeline",
+    "crates/cf-wasm",
+    "crates/cf-ffi",
+    "packages/node",
+]
+default-members = ["crates/cf-cli"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "LicenseRef-Proprietary"
+publish = false
+
+[workspace.dependencies]
+cf-core = { path = "crates/cf-core" }
+cf-voice = { path = "crates/cf-voice" }
+cf-echo = { path = "crates/cf-echo" }
+cf-aec = { path = "crates/cf-aec" }
+cf-echo-pipeline = { path = "crates/cf-echo-pipeline" }
+cf-ffi = { path = "crates/cf-ffi" }
+
+# The cross-check test runs >= 10M FMA cases; keep test code optimised.
+[profile.test]
+opt-level = 3
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+
+# Workspace-wide lint policy. The numeric lints are disabled deliberately:
+# every constant in the engine is an exact IEEE-754 bit pattern, and the
+# comparison/clamp lints would change NaN semantics.
+[workspace.lints.clippy]
+excessive_precision = "allow"
+approx_constant = "allow"
+neg_cmp_op_on_partial_ord = "allow"
+manual_clamp = "allow"
+too_many_arguments = "allow"
+needless_range_loop = "allow"
+chunks_exact_to_as_chunks = "allow"
+large_enum_variant = "allow"
+manual_unwrap_or = "allow"
+missing_safety_doc = "allow"
+not_unsafe_ptr_arg_deref = "allow"

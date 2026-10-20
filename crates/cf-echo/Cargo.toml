@@ -1,0 +1,17 @@
+[package]
+name = "cf-echo"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[features]
+# Forwarded from cf-core so the wasm build's integer software FMA is used by
+# every echo kernel as well.
+force-soft-fma = ["cf-core/force-soft-fma"]
+
+[dependencies]
+cf-core.workspace = true
+
+[lints]
+workspace = true

@@ -1,0 +1,18 @@
+[package]
+name = "cf-voice"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+cf-core.workspace = true
+
+[features]
+default = []
+# Deterministic software FMA (used by the wasm build and by cross-checks).
+soft-fma = ["cf-core/soft-fma"]
+force-soft-fma = ["cf-core/force-soft-fma"]
+
+[lints]
+workspace = true

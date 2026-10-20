@@ -1,0 +1,23 @@
+[package]
+name = "cf-wasm"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[features]
+# The demo module embeds the voice container.  The echo ABI and the 1.84 MB
+# echo container are not part of this crate; `cf-echo` and `cf-echo-pipeline`
+# remain separate workspace crates with their own tests.
+default = ["embedded-voice"]
+embedded-voice = []
+
+[dependencies]
+cf-core = { workspace = true, features = ["force-soft-fma"] }
+cf-voice = { workspace = true, features = ["force-soft-fma"] }
+
+[lints]
+workspace = true

@@ -1,0 +1,161 @@
+name: ci
+
+on:
+  push:
+    branches: ["main", "master"]
+  pull_request:
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: ""
+
+jobs:
+  # ---------------------------------------------------------------- rust core
+  rust:
+    name: build and test (rust)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+      - uses: Swatinem/rust-cache@v2
+      - name: Build workspace
+        run: cargo build --workspace
+
+      # Build the native library alone: a --workspace build unifies the wasm
+      # crate's force-soft-fma feature into cf-core and slows every call site.
+      - name: Build native library
+        run: cargo build --release -p cf-ffi
+
+      - name: Test workspace
+        run: cargo test --workspace
+
+      - name: Rustfmt
+        run: cargo fmt --all -- --check
+
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+  # ------------------------------------------------ conformance: native (C ABI)
+  conformance-native:
+    name: conformance (native)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install --upgrade pip numpy
+      - name: Build native library
+        run: cargo build --release -p cf-ffi
+      - name: Verify bit-exactness
+        run: python conformance/verify.py --json conformance/last-result-ci.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: conformance-native
+          path: conformance/last-result-ci.json
+
+  # ------------------------------------------------- conformance: wasm module
+  conformance-wasm:
+    name: conformance (wasm)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - name: Build wasm
+        run: cargo build --release --target wasm32-unknown-unknown -p cf-wasm
+      - name: Install module next to the demo
+        run: cp target/wasm32-unknown-unknown/release/cf_wasm.wasm web/cf_wasm.wasm
+      - name: Size budget (3.5 MB)
+        run: |
+          size=$(stat -c%s web/cf_wasm.wasm)
+          echo "wasm size: ${size} bytes"
+          test "$size" -le 3670016
+      - name: Verify bit-exactness
+        run: node conformance/verify.mjs --wasm web/cf_wasm.wasm --json conformance/last-result-wasm-ci.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: conformance-wasm
+          path: conformance/last-result-wasm-ci.json
+
+  # ------------------------------------------------------- node native addon
+  node-addon:
+    name: node addon (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - name: Build addon
+        run: cargo build --release -p cf-node
+      - name: Install addon into the package
+        shell: bash
+        run: |
+          case "${{ runner.os }}" in
+            Windows) lib=cf_node.dll;    plat=win32 ;;
+            macOS)   lib=libcf_node.dylib; plat=darwin ;;
+            *)       lib=libcf_node.so;  plat=linux ;;
+          esac
+          arch=$(echo "${RUNNER_ARCH}" | tr '[:upper:]' '[:lower:]')
+          mkdir -p "packages/node/prebuilds/${plat}-${arch}"
+          cp "target/release/$lib" "packages/node/prebuilds/${plat}-${arch}/cf-node.node"
+          ls -l packages/node/prebuilds/*/
+          ls -l packages/node/prebuilds/*/
+      - name: Smoke test
+        working-directory: packages/node
+        run: node test/smoke.js
+
+  # --------------------------------------------------------------- guardrails
+  guard:
+    name: guardrails
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: No third-party product names
+        run: |
+          # The pattern is base64-encoded so this workflow file does not itself
+          # contain the forbidden strings.
+          pattern=$(printf %s YWdvcmF8b29weg== | base64 -d)
+          if grep -rIn --exclude-dir=target --exclude-dir=.git --exclude-dir=internal \
+                   --exclude=PROVENANCE.md --exclude='last-result*.json' -i -E "$pattern" .; then
+            echo "forbidden product name found"; exit 1
+          fi
+          echo "clean"
+      - name: Model container hash
+        run: |
+          expected=d27c831e4d45ecae1da10d5a81a2fd691f2cd1606dacb5a716c4926ed9a20b98
+          actual=$(sha256sum models/voice-default.cfwm | cut -d' ' -f1)
+          echo "container sha256: $actual"
+          test "$actual" = "$expected"
+      - name: Conformance pack is complete
+        run: |
+          test -f conformance/manifest.json
+          for d in conformance/sets/*/; do
+            test -f "$d/input.f32.bin" && test -f "$d/expected.f32.bin"
+          done
+          echo "pack ok"
+      - name: ABI header present
+        run: test -f include/cleanfield.h && grep -q cf_voice_process include/cleanfield.h
+
+
+
+

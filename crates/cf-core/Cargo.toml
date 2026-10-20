@@ -1,0 +1,20 @@
+[package]
+name = "cf-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[features]
+# The software FMA is compiled by default so the verification suite and the
+# wasm build are available out of the box.  Disable it (`default-features =
+# false`) for size-sensitive native builds that use hardware FMA only.
+default = ["soft-fma"]
+# Compile the pure-software, correctly-rounded f32 FMA (integer mantissa path).
+soft-fma = []
+# Route the shared `fma()` entry point through the software implementation.
+# Required for platforms without a deterministic hardware FMA (e.g. wasm).
+force-soft-fma = ["soft-fma"]
+
+[lints]
+workspace = true

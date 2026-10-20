@@ -1,0 +1,23 @@
+[package]
+name = "cf-node"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lib]
+# The addon is an ordinary cdylib.  It exports the N-API registration entry
+# point by hand (`napi_register_module_v1`); the packaging step renames the
+# binary to `cf-node.node`.  There is no build script, no node-gyp and no
+# link-time dependency on Node.
+name = "cf_node"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+# Reuse the hardened C ABI (validation, backend selection, error codes) rather
+# than duplicating it.  `cf-ffi` also ships an rlib, so a Rust host can depend
+# on it directly.  No third-party crates.
+cf-ffi = { workspace = true }
+
+[lints]
+workspace = true

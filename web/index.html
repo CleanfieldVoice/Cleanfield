@@ -1,0 +1,951 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#fafafa">
+  <meta name="description" content="CleanField Voice 1.0 browser demo: live and file denoising with a before/after spectrogram. Everything runs on your device.">
+  <link rel="icon" href="data:,">
+  <title>CleanField Voice 1.0 · Browser Denoising</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #fafafa;
+      --card: #ffffff;
+      --text: #2c2c2c;
+      --strong: #1d1d1d;
+      --muted: #757575;
+      --faint: #9a9a9a;
+      --line: #ececec;
+      --accent: #333333;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    [hidden] {
+      display: none !important;
+    }
+
+    html,
+    body {
+      margin: 0;
+      padding: 0;
+      background: var(--bg);
+    }
+
+    body {
+      min-height: 100vh;
+      display: flex;
+      justify-content: center;
+      align-items: flex-start;
+      padding: clamp(10px, 2.4vh, 26px) 18px 30px;
+      color: var(--text);
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue",
+        Arial, sans-serif;
+      font-size: 14.5px;
+      line-height: 1.55;
+      -webkit-font-smoothing: antialiased;
+      text-rendering: optimizeLegibility;
+    }
+
+    .card {
+      width: 100%;
+      max-width: 1020px;
+      padding: clamp(18px, 3vw, 30px) clamp(18px, 3.4vw, 32px) clamp(18px, 2.8vw, 26px);
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      box-shadow: 0 10px 34px rgba(0, 0, 0, 0.045);
+    }
+
+    .eyebrow {
+      margin: 0 0 3px;
+      color: var(--faint);
+      font-size: 10.5px;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+    }
+
+    h1 {
+      margin: 0;
+      color: var(--strong);
+      font-size: clamp(22px, 3.4vw, 28px);
+      font-weight: 650;
+      letter-spacing: -0.015em;
+      line-height: 1.2;
+    }
+
+    .subtitle {
+      margin: 5px 0 0;
+      color: #666666;
+      font-size: 12.5px;
+    }
+
+    .tabs {
+      display: flex;
+      gap: 4px;
+      margin-top: 14px;
+      padding: 3px;
+      background: #f4f4f4;
+      border-radius: 10px;
+    }
+
+    .tab {
+      flex: 1;
+      padding: 6px 12px;
+      color: #6f6f6f;
+      background: transparent;
+      border: 1px solid transparent;
+      border-radius: 7px;
+      font-size: 12.5px;
+      font-weight: 600;
+    }
+
+    .tab:hover:not(.is-active) {
+      color: #333333;
+    }
+
+    .tab.is-active {
+      color: #222222;
+      background: #ffffff;
+      border-color: #e4e4e4;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+    }
+
+    .tune {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 9px 24px;
+      margin-top: 12px;
+      padding: 10px 14px 9px;
+      background: #fcfcfc;
+      border: 1px solid #f0f0f0;
+      border-radius: 11px;
+    }
+
+    .tune-control {
+      display: grid;
+      gap: 3px;
+      align-content: start;
+    }
+
+    .tune-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      color: #4f4f4f;
+      font-size: 11.5px;
+      font-weight: 600;
+    }
+
+    .tune-head output {
+      color: #333333;
+      font-variant-numeric: tabular-nums;
+      font-weight: 500;
+    }
+
+    .tune-hint {
+      margin: 0;
+      color: #a2a2a2;
+      font-size: 10.5px;
+      line-height: 1.4;
+    }
+
+    .tune-note {
+      grid-column: 1 / -1;
+      margin: 0;
+      color: #a0a0a0;
+      font-size: 10.5px;
+      line-height: 1.4;
+    }
+
+    input[type="range"] {
+      width: 100%;
+      height: 18px;
+      margin: 0;
+      accent-color: #3a3a3a;
+      background: transparent;
+      cursor: pointer;
+    }
+
+    .panel {
+      margin-top: 12px;
+    }
+
+    .live-top {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 10px 14px;
+    }
+
+    button {
+      font: inherit;
+      cursor: pointer;
+      border-radius: 8px;
+      transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+    }
+
+    button:disabled {
+      cursor: not-allowed;
+    }
+
+    .primary {
+      padding: 8px 24px;
+      color: #ffffff;
+      background: var(--accent);
+      border: 1px solid var(--accent);
+      font-size: 13.5px;
+      font-weight: 600;
+    }
+
+    .primary:hover:not(:disabled) {
+      background: #111111;
+      border-color: #111111;
+    }
+
+    .primary:disabled {
+      color: #fafafa;
+      background: #d6d6d6;
+      border-color: #d6d6d6;
+    }
+
+    .primary.is-stop {
+      color: #8f2f2f;
+      background: #ffffff;
+      border-color: #e3c7c7;
+    }
+
+    .primary.is-stop:hover:not(:disabled) {
+      background: #fbf4f4;
+      border-color: #d8b4b4;
+    }
+
+    .status {
+      color: var(--muted);
+      font-size: 12.5px;
+    }
+
+    .monitor {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-left: auto;
+    }
+
+    .monitor-label {
+      color: #6f6f6f;
+      font-size: 11px;
+      letter-spacing: 0.02em;
+    }
+
+    .segmented {
+      display: inline-flex;
+      padding: 2px;
+      background: #f2f2f2;
+      border: 1px solid #e8e8e8;
+      border-radius: 8px;
+    }
+
+    .seg {
+      padding: 4px 10px;
+      color: #6d6d6d;
+      background: transparent;
+      border: 1px solid transparent;
+      border-radius: 6px;
+      font-size: 11.5px;
+      font-weight: 600;
+    }
+
+    .seg.is-active {
+      color: #222222;
+      background: #ffffff;
+      border-color: #dedede;
+    }
+
+    .meters {
+      display: grid;
+      gap: 6px;
+      margin-top: 10px;
+      padding: 9px 12px;
+      background: #fcfcfc;
+      border: 1px solid #f0f0f0;
+      border-radius: 10px;
+    }
+
+    .meter-row {
+      display: grid;
+      grid-template-columns: 48px 1fr 58px;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .meter-label {
+      color: #6f6f6f;
+      font-size: 11px;
+      letter-spacing: 0.02em;
+    }
+
+    .meter-track {
+      height: 6px;
+      overflow: hidden;
+      background: #ededed;
+      border-radius: 999px;
+    }
+
+    .meter-fill {
+      width: 0;
+      height: 100%;
+      background: #5c5c5c;
+      border-radius: 999px;
+      transition: width 0.08s linear;
+    }
+
+    .meter-row:nth-child(2) .meter-fill {
+      background: #2f2f2f;
+    }
+
+    .meter-value {
+      color: #8a8a8a;
+      font-size: 11px;
+      font-variant-numeric: tabular-nums;
+      text-align: right;
+    }
+
+    .live-stats {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 5px 6px;
+      margin-top: 9px;
+    }
+
+    .stat {
+      padding: 3px 8px;
+      color: #4c4c4c;
+      background: #f7f7f7;
+      border: 1px solid #eeeeee;
+      border-radius: 6px;
+      font-size: 11px;
+      font-variant-numeric: tabular-nums;
+      white-space: nowrap;
+    }
+
+    .hint {
+      margin: 8px 0 0;
+      color: #6f6f6f;
+      font-size: 12px;
+    }
+
+    .hint::before {
+      content: "♪";
+      margin-right: 6px;
+      color: #9a9a9a;
+    }
+
+    .note {
+      margin: 6px 0 0;
+      color: #a0a0a0;
+      font-size: 11px;
+      line-height: 1.5;
+    }
+
+    .error {
+      margin: 10px 0 0;
+      padding: 8px 11px;
+      color: #9a3535;
+      background: #fbf2f2;
+      border: 1px solid #f0dcdc;
+      border-radius: 8px;
+      font-size: 12px;
+    }
+
+    /* File mode */
+    .drop-zone {
+      padding: 20px 18px 18px;
+      text-align: center;
+      background: #fcfcfc;
+      border: 1.5px dashed #d8d8d8;
+      border-radius: 12px;
+      cursor: pointer;
+      transition: border-color 0.15s ease, background-color 0.15s ease;
+    }
+
+    .drop-zone:hover,
+    .drop-zone.is-dragging {
+      background: #f7f7f7;
+      border-color: #a8a8a8;
+    }
+
+    .drop-zone.is-busy {
+      cursor: default;
+      opacity: 0.62;
+    }
+
+    .drop-title {
+      margin: 0;
+      color: #333333;
+      font-size: 14px;
+      font-weight: 600;
+    }
+
+    .drop-hint {
+      margin: 4px 0 12px;
+      color: var(--faint);
+      font-size: 12px;
+    }
+
+    .ghost {
+      padding: 6px 16px;
+      color: #333333;
+      background: #ffffff;
+      border: 1px solid #dedede;
+      font-size: 12.5px;
+    }
+
+    .ghost:hover:not(:disabled) {
+      background: #fafafa;
+      border-color: #bdbdbd;
+    }
+
+    .ghost:disabled {
+      color: #aaaaaa;
+    }
+
+    .file-name {
+      margin: 9px 0 0;
+      padding: 6px 10px;
+      color: #555555;
+      background: #f7f7f7;
+      border-radius: 7px;
+      font-size: 12px;
+      overflow-wrap: anywhere;
+    }
+
+    .actions {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 12px;
+      margin-top: 12px;
+    }
+
+    progress {
+      display: block;
+      width: 100%;
+      height: 4px;
+      margin-top: 12px;
+      overflow: hidden;
+      appearance: none;
+      border: 0;
+      border-radius: 999px;
+      background: #eeeeee;
+    }
+
+    progress::-webkit-progress-bar {
+      background: #eeeeee;
+      border-radius: 999px;
+    }
+
+    progress::-webkit-progress-value {
+      background: #444444;
+      border-radius: 999px;
+    }
+
+    progress::-moz-progress-bar {
+      background: #444444;
+      border-radius: 999px;
+    }
+
+    .results {
+      margin-top: 16px;
+      padding-top: 14px;
+      border-top: 1px solid #f0f0f0;
+    }
+
+    .player + .player {
+      margin-top: 12px;
+    }
+
+    .player-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 4px;
+      color: #555555;
+      font-size: 12px;
+    }
+
+    .player-note {
+      color: var(--faint);
+    }
+
+    audio {
+      display: block;
+      width: 100%;
+      height: 38px;
+    }
+
+    .download-row {
+      margin-top: 14px;
+    }
+
+    .download {
+      display: inline-block;
+      padding: 7px 14px;
+      color: #2f2f2f;
+      background: #f4f4f4;
+      border: 1px solid #e2e2e2;
+      border-radius: 8px;
+      text-decoration: none;
+      font-size: 12.5px;
+    }
+
+    .download:hover {
+      background: #ececec;
+    }
+
+    .stats {
+      margin: 10px 0 0;
+      color: var(--muted);
+      font-size: 11.5px;
+    }
+
+    /* Spectrogram */
+    .spectrogram {
+      width: 100%;
+      margin-top: 18px;
+      padding-top: 14px;
+      border-top: 1px solid #f0f0f0;
+    }
+
+    .spec-head {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 8px 18px;
+    }
+
+    .spec-heading {
+      min-width: 0;
+    }
+
+    .spec-title {
+      margin: 0;
+      color: var(--strong);
+      font-size: 15px;
+      font-weight: 650;
+      letter-spacing: -0.01em;
+    }
+
+    .spec-sub {
+      margin: 2px 0 0;
+      color: #8f8f8f;
+      font-size: 11px;
+    }
+
+    .spec-controls {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+    }
+
+    .spec-toggle {
+      padding: 5px 12px;
+      color: #5f5f5f;
+      background: #ffffff;
+      border: 1px solid #e2e2e2;
+      border-radius: 7px;
+      font-size: 11.5px;
+      font-weight: 600;
+    }
+
+    .spec-toggle:hover {
+      color: #2f2f2f;
+      border-color: #c8c8c8;
+    }
+
+    .spec-toggle.is-active {
+      color: #7c3030;
+      background: #fbf4f4;
+      border-color: #e3c7c7;
+    }
+
+    .spec-clear {
+      padding: 5px 11px;
+      color: #5f5f5f;
+      background: #f7f7f7;
+      border: 1px solid #e8e8e8;
+      border-radius: 7px;
+      font-size: 11.5px;
+      font-weight: 600;
+    }
+
+    .spec-clear:hover {
+      color: #2f2f2f;
+      background: #efefef;
+    }
+
+    .spec-panel {
+      margin-top: 10px;
+      padding: 7px 9px 8px;
+      background: #ffffff;
+      border: 1px solid #ececec;
+      border-radius: 10px;
+    }
+
+    .spec-panel + .spec-panel {
+      margin-top: 8px;
+    }
+
+    .spec-panel-head {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 5px;
+    }
+
+    .spec-name {
+      color: #333333;
+      font-size: 11.5px;
+      font-weight: 650;
+    }
+
+    .spec-note {
+      color: #a5a5a5;
+      font-size: 10px;
+    }
+
+    .spec-body {
+      display: grid;
+      grid-template-columns: 30px minmax(0, 1fr);
+      gap: 7px;
+      align-items: stretch;
+    }
+
+    .spec-y {
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      padding: 1px 0;
+      color: #a5a5a5;
+      font-size: 9.5px;
+      line-height: 1;
+      font-variant-numeric: tabular-nums;
+      text-align: right;
+      user-select: none;
+    }
+
+    .spec-plot {
+      position: relative;
+      min-width: 0;
+    }
+
+    .spec-canvas {
+      display: block;
+      width: 100%;
+      height: 240px;
+      background: #fbfafc;
+      border: 1px solid #f0f0f0;
+      border-radius: 6px;
+    }
+
+    .spec-empty {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0 14px;
+      color: #b0b0b0;
+      font-size: 11.5px;
+      line-height: 1.45;
+      text-align: center;
+      pointer-events: none;
+    }
+
+    .spec-x {
+      display: flex;
+      justify-content: space-between;
+      margin: 6px 2px 0 37px;
+      color: #a5a5a5;
+      font-size: 10.5px;
+    }
+
+    .spec-x-mid {
+      color: #b5b5b5;
+    }
+
+    .spec-legend {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 6px 9px;
+      margin-top: 8px;
+      color: #a0a0a0;
+      font-size: 10.5px;
+    }
+
+    .spec-ramp {
+      display: inline-block;
+      width: 104px;
+      height: 8px;
+      border: 1px solid #ececec;
+      border-radius: 999px;
+    }
+
+    .spec-legend-note {
+      margin-left: auto;
+      color: #b0b0b0;
+    }
+
+    .footer {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      gap: 6px 16px;
+      margin-top: 18px;
+      padding-top: 12px;
+      color: #a6a6a6;
+      border-top: 1px solid #f1f1f1;
+      font-size: 11px;
+    }
+
+    :focus-visible {
+      outline: 2px solid #4a4a4a;
+      outline-offset: 2px;
+    }
+
+    @media (max-width: 520px) {
+      body {
+        padding: 10px 8px 24px;
+      }
+
+      .card {
+        padding: 18px 16px;
+        border-radius: 13px;
+      }
+
+      .tune {
+        grid-template-columns: 1fr;
+      }
+
+      .monitor {
+        margin-left: 0;
+      }
+
+      .drop-zone {
+        padding: 18px 12px 16px;
+      }
+
+      .spec-canvas {
+        height: 190px;
+      }
+
+      .spec-legend-note {
+        width: 100%;
+        margin-left: 0;
+      }
+
+      .spec-controls {
+        width: 100%;
+      }
+
+      .footer {
+        display: block;
+      }
+
+      .footer span {
+        display: block;
+      }
+
+      .footer span + span {
+        margin-top: 4px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="card" id="card">
+    <header>
+      <p class="eyebrow">Browser audio demo</p>
+      <h1>CleanField Voice 1.0</h1>
+      <p class="subtitle">Remove background noise from a microphone or an audio file. Everything runs on your device and nothing is uploaded.</p>
+    </header>
+
+    <nav class="tabs" role="tablist" aria-label="Input">
+      <button type="button" class="tab is-active" id="tabLive" role="tab"
+        aria-selected="true" aria-controls="livePanel">Live</button>
+      <button type="button" class="tab" id="tabFile" role="tab"
+        aria-selected="false" aria-controls="filePanel" tabindex="-1">File</button>
+    </nav>
+
+    <section class="tune" aria-label="Denoise parameters">
+      <label class="tune-control" for="attenuationSlider">
+        <span class="tune-head"><span>Maximum attenuation</span><output id="attenuationValue" for="attenuationSlider">−80 dB</output></span>
+        <input type="range" id="attenuationSlider" min="-80" max="0" step="5" value="-80">
+        <span class="tune-hint">Range −80…0 dB, default −80 dB · mask floor; lower values remove more noise.</span>
+      </label>
+      <label class="tune-control" for="gainSlider">
+        <span class="tune-head"><span>Output gain</span><output id="gainValue" for="gainSlider">0 dB</output></span>
+        <input type="range" id="gainSlider" min="-12" max="12" step="1" value="0">
+        <span class="tune-hint">Range −12…+12 dB, default 0 dB · applied to the monitor and the WAV.</span>
+      </label>
+      <p class="tune-note">Live changes apply without restarting audio; file changes apply on the next Process.</p>
+    </section>
+
+    <section class="panel" id="livePanel" role="tabpanel" aria-labelledby="tabLive">
+      <div class="live-top">
+        <button type="button" class="primary" id="startButton">Start</button>
+        <span class="status" id="liveStatus" role="status" aria-live="polite">Idle</span>
+        <div class="monitor" role="group" aria-label="Monitor mode">
+          <span class="monitor-label">Monitor</span>
+          <div class="segmented">
+            <button type="button" class="seg is-active" id="denoisedButton" aria-pressed="true">Denoised</button>
+            <button type="button" class="seg" id="rawButton" aria-pressed="false">Raw</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="meters" aria-label="Audio levels">
+        <div class="meter-row">
+          <span class="meter-label">Input</span>
+          <div class="meter-track"><div class="meter-fill" id="inputMeter"></div></div>
+          <span class="meter-value" id="inputDb">−100 dB</span>
+        </div>
+        <div class="meter-row">
+          <span class="meter-label">Output</span>
+          <div class="meter-track"><div class="meter-fill" id="outputMeter"></div></div>
+          <span class="meter-value" id="outputDb">−100 dB</span>
+        </div>
+      </div>
+
+      <div class="live-stats">
+        <span class="stat" id="frameTiming">— ms / frame</span>
+        <span class="stat" id="rtfValue">RTF —</span>
+        <span class="stat" id="frameCount">0 frames</span>
+        <span class="stat" id="sampleRateValue">16 kHz</span>
+      </div>
+
+      <p class="hint" id="liveHint">Use headphones to avoid feedback.</p>
+      <p class="error" id="liveError" role="alert" hidden></p>
+      <p class="note" id="latencyNote">Algorithmic latency: 80 ms — a 768-sample window plus 2 × 256-sample look-ahead (1,280 samples at 16 kHz), before the device buffer.</p>
+    </section>
+
+    <section class="panel" id="filePanel" role="tabpanel" aria-labelledby="tabFile" hidden>
+      <section class="drop-zone" id="dropZone" role="button" tabindex="0"
+        aria-label="Choose an audio file, or drop one here">
+        <p class="drop-title" id="dropTitle">Drop an audio file here</p>
+        <p class="drop-hint">or click to choose · WAV, MP3, M4A, OGG and other formats your browser can decode</p>
+        <button type="button" class="ghost" id="chooseButton">Choose file</button>
+        <input type="file" id="fileInput" accept="audio/*,.wav,.mp3,.m4a,.aac,.ogg,.oga,.flac,.opus,.webm" hidden>
+      </section>
+
+      <p class="file-name" id="fileName" hidden></p>
+
+      <div class="actions">
+        <button type="button" class="primary" id="processButton" disabled>Process</button>
+        <span class="status" id="status" role="status" aria-live="polite">Waiting for an audio file</span>
+      </div>
+
+      <progress id="progress" max="100" value="0" hidden></progress>
+      <p class="error" id="error" role="alert" hidden></p>
+
+      <section class="results" id="results" hidden>
+        <div class="player">
+          <div class="player-head">
+            <span id="beforeLabel">Before</span>
+            <span class="player-note" id="beforeNote">Original audio</span>
+          </div>
+          <audio id="beforeAudio" controls preload="metadata"></audio>
+        </div>
+
+        <div class="player">
+          <div class="player-head">
+            <span id="afterLabel">After</span>
+            <span class="player-note" id="afterNote">16 kHz mono WAV</span>
+          </div>
+          <audio id="afterAudio" controls preload="metadata"></audio>
+        </div>
+
+        <div class="download-row">
+          <a class="download" id="downloadLink" href="#" download>Download denoised WAV</a>
+        </div>
+
+        <p class="stats" id="stats"></p>
+      </section>
+    </section>
+
+    <section class="spectrogram" id="spectrogram" aria-labelledby="specTitle">
+      <div class="spec-head">
+        <div class="spec-heading">
+          <h2 class="spec-title" id="specTitle">Spectrogram</h2>
+          <p class="spec-sub">Before and after · 0–8 kHz linear frequency · fixed −100…0 dBFS scale</p>
+        </div>
+        <div class="spec-controls">
+          <button type="button" class="spec-toggle" id="specFreeze" aria-pressed="false">Freeze</button>
+          <button type="button" class="spec-clear" id="specClear">Clear</button>
+        </div>
+      </div>
+
+      <div class="spec-panel">
+        <div class="spec-panel-head">
+          <span class="spec-name">Noisy</span>
+          <span class="spec-note">input · analysis window</span>
+        </div>
+        <div class="spec-body">
+          <div class="spec-y" aria-hidden="true">
+            <span>8k</span><span>6k</span><span>4k</span><span>2k</span><span>0</span>
+          </div>
+          <div class="spec-plot">
+            <canvas class="spec-canvas" id="specInput" width="640" height="132"
+              aria-label="Input spectrogram, 0 to 8 kHz, time increasing left to right"></canvas>
+            <span class="spec-empty" id="specInputEmpty">Start live mode or process a file to see the spectrogram.</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="spec-panel">
+        <div class="spec-panel-head">
+          <span class="spec-name">Enhanced</span>
+          <span class="spec-note">output · after overlap-add</span>
+        </div>
+        <div class="spec-body">
+          <div class="spec-y" aria-hidden="true">
+            <span>8k</span><span>6k</span><span>4k</span><span>2k</span><span>0</span>
+          </div>
+          <div class="spec-plot">
+            <canvas class="spec-canvas" id="specOutput" width="640" height="132"
+              aria-label="Output spectrogram, 0 to 8 kHz, time increasing left to right"></canvas>
+            <span class="spec-empty" id="specOutputEmpty">Start live mode or process a file to see the spectrogram.</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="spec-x" aria-hidden="true">
+        <span id="specXStart">older</span>
+        <span class="spec-x-mid">time →</span>
+        <span id="specXEnd">newest</span>
+      </div>
+
+      <div class="spec-legend">
+        <span>−100 dBFS</span>
+        <span class="spec-ramp" id="specRamp" aria-hidden="true"></span>
+        <span>0 dBFS</span>
+        <span class="spec-legend-note" id="specSpan">Start live mode or process a file.</span>
+      </div>
+    </section>
+
+    <footer class="footer">
+      <span>All processing happens in your browser</span>
+      <span>16 kHz mono · fixed 80 ms latency removed from file output</span>
+    </footer>
+  </main>
+
+  <noscript>Please enable JavaScript to use this demo.</noscript>
+  <script type="module" src="./app.js"></script>
+</body>
+</html>

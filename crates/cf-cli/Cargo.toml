@@ -1,0 +1,20 @@
+[package]
+name = "cf-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[features]
+# Diagnostic benchmark mode: force the portable software FMA on native so the
+# wasm-destined numeric path can be measured with the per-layer profiler.
+# `dump` refuses to write an oracle when this is active.
+force-soft-fma = ["cf-core/force-soft-fma", "cf-voice/force-soft-fma"]
+
+[dependencies]
+cf-core = { workspace = true, features = ["soft-fma"] }
+cf-voice.workspace = true
+cf-echo.workspace = true
+
+[lints]
+workspace = true

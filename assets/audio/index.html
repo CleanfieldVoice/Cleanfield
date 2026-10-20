@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CleanField - before and after</title>
+<style>
+  body { margin: 0; background: #fafafa; color: #111; font: 15px/1.55 -apple-system, "Segoe UI", system-ui, sans-serif; }
+  main { max-width: 900px; margin: 0 auto; padding: 40px 20px 72px; }
+  h1 { font-size: 26px; margin: 0 0 6px; letter-spacing: -0.02em; }
+  p.lead { margin: 0 0 28px; color: #555; }
+  h2 { font-size: 16px; margin: 34px 0 10px; }
+  table { width: 100%; border-collapse: collapse; background: #fff; border: 1px solid #ececec; border-radius: 12px; overflow: hidden; }
+  th, td { padding: 10px 12px; text-align: left; border-bottom: 1px solid #f2f2f2; font-size: 13px; }
+  th { background: #fbfbfb; font-weight: 600; color: #666; }
+  audio { width: 100%; height: 32px; }
+  .note { color: #666; font-size: 13px; margin-top: 10px; }
+  a { color: #0b63ce; }
+</style>
+</head>
+<body>
+<main>
+  <h1>CleanField - before and after</h1>
+  <p class="lead">Eight-second excerpts, 16 kHz mono. Headphones recommended. Speech is Chinese in the first table, English in the second.</p>
+
+  <h2>Noise suppression - Chinese</h2>
+  <table>
+    <tr><th>Noise</th><th>Before</th><th>After</th></tr>
+<tr><td>white</td><td><audio controls preload="none" src="denoise-zh-white-before.wav"></audio></td><td><audio controls preload="none" src="denoise-zh-white-after.wav"></audio></td></tr>
+<tr><td>pink</td><td><audio controls preload="none" src="denoise-zh-pink-before.wav"></audio></td><td><audio controls preload="none" src="denoise-zh-pink-after.wav"></audio></td></tr>
+<tr><td>babble</td><td><audio controls preload="none" src="denoise-zh-babble-before.wav"></audio></td><td><audio controls preload="none" src="denoise-zh-babble-after.wav"></audio></td></tr>
+<tr><td>cafe</td><td><audio controls preload="none" src="denoise-zh-cafe-before.wav"></audio></td><td><audio controls preload="none" src="denoise-zh-cafe-after.wav"></audio></td></tr>
+<tr><td>street</td><td><audio controls preload="none" src="denoise-zh-street-before.wav"></audio></td><td><audio controls preload="none" src="denoise-zh-street-after.wav"></audio></td></tr>
+  </table>
+
+  <h2>Noise suppression - English</h2>
+  <table>
+    <tr><th>Noise</th><th>Before</th><th>After</th></tr>
+<tr><td>white</td><td><audio controls preload="none" src="denoise-en-white-before.wav"></audio></td><td><audio controls preload="none" src="denoise-en-white-after.wav"></audio></td></tr>
+<tr><td>pink</td><td><audio controls preload="none" src="denoise-en-pink-before.wav"></audio></td><td><audio controls preload="none" src="denoise-en-pink-after.wav"></audio></td></tr>
+<tr><td>babble</td><td><audio controls preload="none" src="denoise-en-babble-before.wav"></audio></td><td><audio controls preload="none" src="denoise-en-babble-after.wav"></audio></td></tr>
+<tr><td>cafe</td><td><audio controls preload="none" src="denoise-en-cafe-before.wav"></audio></td><td><audio controls preload="none" src="denoise-en-cafe-after.wav"></audio></td></tr>
+<tr><td>street</td><td><audio controls preload="none" src="denoise-en-street-before.wav"></audio></td><td><audio controls preload="none" src="denoise-en-street-after.wav"></audio></td></tr>
+  </table>
+
+  <h2>Echo cancellation - Chinese</h2>
+  <table>
+    <tr><th>Signal</th><th>Before</th><th>After</th></tr>
+    <tr><td>Echo + near-end speech</td><td><audio controls preload="none" src="echo-zh-before.wav"></audio></td><td><audio controls preload="none" src="echo-zh-after.wav"></audio></td></tr>
+  </table>
+
+  <p class="note">The demo speech was synthesised with a research, non-commercial text-to-speech model; the engine and the model weights are unaffected. See the repository README for measurements and how each clip was built.</p>
+</main>
+</body>
+</html>

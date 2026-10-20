@@ -1,0 +1,114 @@
+{
+  "format": "cleanfield-conformance/1",
+  "engine": {
+    "implementation": "tools/engine-v64.py",
+    "model": "v6_4",
+    "model_sha256": "78479976a2a50fef3a5b711f7f1ef7b58416d0a64a87269fbf437b290577a4e7",
+    "reciprocal": "soft (portable table model of the hardware RCPPS)",
+    "fma": "correctly-rounded f32 FMA (2Sum residual construction)",
+    "numpy": "2.5.3",
+    "python": "3.14.8"
+  },
+  "contract": {
+    "sample_rate_hz": 16000,
+    "hop_samples": 256,
+    "hop_ms": 16.0,
+    "window_samples": 768,
+    "lookahead_hops": 2,
+    "latency_samples": 1280,
+    "latency_ms": 80.0,
+    "input_width": 513,
+    "output_width": 1026,
+    "input_layout": "frame-major float32, little-endian, 513 values per frame",
+    "output_layout": "frame-major float32, little-endian, 1026 values per frame",
+    "bandwidth_hz": [
+      0,
+      8000
+    ]
+  },
+  "exactness": {
+    "criterion": "bitwise equality of every expected output value",
+    "tolerance": 0.0
+  },
+  "sets": [
+    {
+      "name": "quiet-speech",
+      "description": "Quiet voiced speech: harmonic comb with a three-formant envelope, syllable gating and a -40 dB level; 40 frames.",
+      "frames": 40,
+      "input_width": 513,
+      "output_width": 1026,
+      "input_file": "sets/quiet-speech/input.f32.bin",
+      "output_file": "sets/quiet-speech/expected.f32.bin",
+      "input_bytes": 82080,
+      "output_bytes": 164160,
+      "input_sha256": "5ed40f34b2f943bc66ab1d95a68e19f04a24a24483d08e397d5de50f3802d306",
+      "output_sha256": "93c7c1c2431557cc24e96a422af9fc0034f69886c6feca447722ffec940d9320",
+      "input_range": [
+        -20.560535430908203,
+        -8.148561477661133
+      ],
+      "output_range": [
+        -0.10615790635347366,
+        0.6315886974334717
+      ],
+      "sequence": {
+        "function": "quiet_speech(frames=40, seed=20261020)",
+        "rng": "numpy.random.default_rng(20261020) (PCG64), draw order: one standard_normal() per frame for the level",
+        "formula": "f0 = 115 + 30*sin(2*pi*t/40) Hz; 40 harmonics with amplitude k**-0.8 and a 24 Hz Gaussian width; formants (520,110,1.00), (1480,190,0.62), (2520,280,0.36); amplitude = 10**(level_db/20), level_db = -40 + 6*sin(2*pi*t/13) + 2*N(0,1); gate 1.0 for t%10 < 7 else 0.12; power = A^2*((0.04+formant)*(0.02+comb)+1e-6)+1e-9; feature = ln(power)",
+        "note": "Bins are 15.625 Hz apart (16 kHz / 1024); bin 512 is Nyquist."
+      }
+    },
+    {
+      "name": "steady-noise",
+      "description": "Stationary noise: -3*ln(1+f/1000) tilt, a slow overall level, and independent per-bin texture; 40 frames.",
+      "frames": 40,
+      "input_width": 513,
+      "output_width": 1026,
+      "input_file": "sets/steady-noise/input.f32.bin",
+      "output_file": "sets/steady-noise/expected.f32.bin",
+      "input_bytes": 82080,
+      "output_bytes": 164160,
+      "input_sha256": "5ab05704c2af152b4ef27c2e9cb391ffda7696909a488109f1646f3adfd6a64f",
+      "output_sha256": "e24d2814afae510fe6573d98428e827c1a37b49f3ba9af0f0399cf8946f424a7",
+      "input_range": [
+        -18.429759979248047,
+        -6.561068534851074
+      ],
+      "output_range": [
+        -0.1428152322769165,
+        0.5404499769210815
+      ],
+      "sequence": {
+        "function": "steady_noise(frames=40, seed=20261021)",
+        "rng": "numpy.random.default_rng(20261021) (PCG64), draw order: 40 level samples, then 40*513 texture samples",
+        "formula": "feature[t,k] = -9 + 0.35*N(0,1)[t] - 3*ln(1 + f_k/1000) + 0.8*N(0,1)[t,k], f_k = 15.625*k"
+      }
+    },
+    {
+      "name": "extreme-amplitude",
+      "description": "Extreme amplitude: the engine clamp sequence (scales 1..1000, full-scale frames every 9th frame); 40 frames.",
+      "frames": 40,
+      "input_width": 513,
+      "output_width": 1026,
+      "input_file": "sets/extreme-amplitude/input.f32.bin",
+      "output_file": "sets/extreme-amplitude/expected.f32.bin",
+      "input_bytes": 82080,
+      "output_bytes": 164160,
+      "input_sha256": "5defc4579d19bf6c9c198dfb0353111e8dbc3a758d7fe67ee2b5698cba45657d",
+      "output_sha256": "f90d228b52a46b4c2e1c1365fa6e3081f2046c689b0cee5bdd57a7cd24829482",
+      "input_range": [
+        -3782.388671875,
+        3956.30517578125
+      ],
+      "output_range": [
+        -12.769447326660156,
+        6.941108703613281
+      ],
+      "sequence": {
+        "function": "extreme_amplitude(frames=40) == tools/engine-v64.py clamp_frames(40)",
+        "rng": "numpy.random.default_rng(777) (PCG64), 40*513 standard_normal",
+        "formula": "base[t,k] = N(0,1); scale = [1,30,300,3,1000,10][t % 6]; feature = base*scale; every 9th frame is the constant 500.0"
+      }
+    }
+  ]
+}

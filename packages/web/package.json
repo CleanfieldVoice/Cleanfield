@@ -1,0 +1,9 @@
+{
+  "name": "@cleanfield/web",
+  "version": "1.0.0",
+  "description": "CleanField Voice 1.0 noise suppression for the browser (AudioWorklet + WebAssembly).",
+  "type": "module",
+  "main": "index.js",
+  "files": ["index.js", "cf_wasm.wasm", "worklet-processor.js", "live-dsp.js", "dsp.js", "README.md"],
+  "license": "MIT"
+}

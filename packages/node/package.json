@@ -1,0 +1,54 @@
+{
+  "name": "@cleanfield/node",
+  "version": "0.1.0",
+  "description": "CleanField real-time speech enhancement engine for Node.js: prebuilt native addon, no node-gyp.",
+  "license": "UNLICENSED",
+  "author": "CleanField",
+  "main": "index.js",
+  "types": "index.d.ts",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "os": [
+    "win32",
+    "darwin",
+    "linux"
+  ],
+  "cpu": [
+    "x64",
+    "arm64"
+  ],
+  "files": [
+    "index.js",
+    "index.d.ts",
+    "scripts/",
+    "prebuilds/",
+    "models/voice-default.cfwm",
+    "README.md"
+  ],
+  "scripts": {
+    "prepack": "node scripts/prepare-model.mjs",
+    "postinstall": "node scripts/fetch-prebuilt.mjs",
+    "test": "node test/smoke.js"
+  },
+  "optionalDependencies": {
+    "@cleanfield/node-win32-x64": "0.1.0",
+    "@cleanfield/node-win32-arm64": "0.1.0",
+    "@cleanfield/node-darwin-x64": "0.1.0",
+    "@cleanfield/node-darwin-arm64": "0.1.0",
+    "@cleanfield/node-darwin-universal": "0.1.0",
+    "@cleanfield/node-linux-x64": "0.1.0",
+    "@cleanfield/node-linux-arm64": "0.1.0"
+  },
+  "cleanfield": {
+    "releaseBaseUrl": "https://github.com/cleanfield/cleanfield/releases/download",
+    "model": "models/voice-default.cfwm"
+  },
+  "keywords": [
+    "audio",
+    "speech-enhancement",
+    "denoise",
+    "wasm",
+    "native-addon"
+  ]
+}
