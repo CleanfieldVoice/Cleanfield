@@ -11,6 +11,11 @@
  * outputs, inverse FFT, overlap-add with the 8/9 synthesis normalisation.
  * One `StreamingDenoiser` keeps the engine's cross-frame state (5-frame history
  * and LSTM state); it is reset once in the constructor and never mid-stream.
+ *
+ * The live spectrogram is fed by the real audio path: the input panel is the
+ * windowed analysis spectrum that enters the model, and the output panel is a
+ * windowed transform of the 768 most recently emitted output samples, after
+ * the synthesis window and overlap-add.  Capture never changes the audio path.
  */
 
 import {
@@ -21,17 +26,34 @@ import {
   FFT_SIZE,
   HOP_SIZE,
   LATENCY_SAMPLES,
-  MASK_FLOOR,
   MASK_GAIN,
+  MAX_ATTENUATION_DB,
   SAMPLE_RATE,
+  SPECTRUM_ALIGN_HOPS,
+  SPECTRUM_HISTORY,
+  SPECTRUM_NORM,
   SYNTHESIS_SCALE,
   VoiceEngine,
   WINDOW,
   WINDOW_SIZE,
+  applyMaskFloor,
+  maskFloorForDb,
+  normalizeMaxAttenuationDb,
 } from './dsp.js';
+import { SPEC_BINS, fillDbColumn } from './spectrogram-core.js';
 
 const RING_SIZE = 1024;
 const RING_MASK = RING_SIZE - 1;
+
+/**
+ * A live maximum-attenuation change is ramped linearly in dB over this many
+ * samples (100 ms at 16 kHz, i.e. 6.25 hops).  Each hop moves the applied floor
+ * by at most `MAX_ATTENUATION_DB * HOP_SIZE / ATTENUATION_RAMP_SAMPLES`; the
+ * overlap-add windows then smooth the per-frame mask change further, so a
+ * slider move cannot click.
+ */
+export const ATTENUATION_RAMP_SAMPLES = 1600;
+const ATTENUATION_STEP = (MAX_ATTENUATION_DB * HOP_SIZE) / ATTENUATION_RAMP_SAMPLES;
 
 const clock =
   typeof performance !== 'undefined' && typeof performance.now === 'function'
@@ -53,9 +75,10 @@ function fail(message) {
  * the input.  `processHop()` returns a reused 256-sample buffer.
  */
 export class StreamingDenoiser {
-  constructor(engine) {
+  constructor(engine, options = {}) {
     if (!(engine instanceof VoiceEngine)) throw fail('The denoising engine is not valid.');
     this.engine = engine;
+    this.captureSpectrum = Boolean(options.captureSpectrum);
     this.ring = new Float32Array(RING_SIZE);
     this.writeIndex = 0;
     this.analysis = new Float32Array(WINDOW_SIZE);
@@ -66,9 +89,25 @@ export class StreamingDenoiser {
     this.specIm = [new Float32Array(BIN_COUNT), new Float32Array(BIN_COUNT)];
     this.curRe = new Float32Array(BIN_COUNT);
     this.curIm = new Float32Array(BIN_COUNT);
+    // Capture-only buffers.  They are allocated once per session; processHop
+    // never allocates.  The input spectra wait in a short ring until the
+    // matching emitted output window exists, and the output ring holds the
+    // last 768 emitted samples.
+    this.inputHistory = this.captureSpectrum
+      ? Array.from({ length: SPECTRUM_HISTORY }, () => new Float32Array(SPEC_BINS))
+      : null;
+    this.outputRing = this.captureSpectrum ? new Float32Array(WINDOW_SIZE) : null;
+    this.outputRingWrite = 0;
     this.features = new Float32Array(BIN_COUNT);
     this.mask = new Float32Array(BIN_COUNT);
     this.hopOutput = new Float32Array(HOP_SIZE);
+    // Applied mask floor in dB and the value the slider is moving toward.  They
+    // start equal, so an unchanged session is bit-identical to the offline path.
+    this.maxAttenuationDb = normalizeMaxAttenuationDb(options.maxAttenuationDb);
+    this.attenuationTarget = this.maxAttenuationDb;
+    this.spectrumInput = this.captureSpectrum ? new Float32Array(SPEC_BINS) : null;
+    this.spectrumOutput = this.captureSpectrum ? new Float32Array(SPEC_BINS) : null;
+    this.spectrumValid = false;
     this.frames = 0;
     this.hopMsTotal = 0;
     // A live session must not reset the engine after the stream starts.
@@ -77,6 +116,15 @@ export class StreamingDenoiser {
 
   get averageHopMs() {
     return this.frames > 0 ? this.hopMsTotal / this.frames : 0;
+  }
+
+  /**
+   * Request a new mask floor in dB.  The value is applied with the 100 ms
+   * linear-in-dB ramp in `processHop`, never by resetting the engine.
+   * @param {number} value in `[-80, 0]` dB
+   */
+  setMaxAttenuationDb(value) {
+    this.attenuationTarget = normalizeMaxAttenuationDb(value);
   }
 
   /**
@@ -89,6 +137,17 @@ export class StreamingDenoiser {
       throw fail(`A live hop must contain exactly ${HOP_SIZE} samples.`);
     }
     const started = clock();
+
+    // Slew the applied mask floor toward the slider value once per hop.  A
+    // target equal to the current value is a no-op, so an untouched session is
+    // bit-identical to the offline pipeline.
+    if (this.maxAttenuationDb !== this.attenuationTarget) {
+      this.maxAttenuationDb =
+        this.maxAttenuationDb < this.attenuationTarget
+          ? Math.min(this.attenuationTarget, this.maxAttenuationDb + ATTENUATION_STEP)
+          : Math.max(this.attenuationTarget, this.maxAttenuationDb - ATTENUATION_STEP);
+    }
+    const maskFloor = maskFloorForDb(this.maxAttenuationDb);
 
     // Ring-buffer the new hop, then read the most recent 768 samples in order.
     let write = this.writeIndex;
@@ -121,6 +180,18 @@ export class StreamingDenoiser {
       curIm[k] = fftIm[k];
     }
 
+    // Input panel: the windowed analysis spectrum that enters the model.  It
+    // is emitted once the matching output window has been produced.
+    if (this.captureSpectrum) {
+      fillDbColumn(
+        curRe,
+        curIm,
+        SPEC_BINS,
+        SPECTRUM_NORM,
+        this.inputHistory[this.frames % SPECTRUM_HISTORY]
+      );
+    }
+
     const features = this.features;
     for (let k = 0; k < BIN_COUNT; k++) {
       const re = curRe[k];
@@ -141,7 +212,7 @@ export class StreamingDenoiser {
       );
       const magnitude = Math.fround(Math.sqrt(power));
       const m = Math.fround(magnitude * MASK_GAIN);
-      mask[k] = m > MASK_FLOOR ? (m < 1 ? m : 1) : MASK_FLOOR;
+      mask[k] = applyMaskFloor(m, maskFloor);
     }
 
     // The mask from this frame is applied to the spectrum from two hops ago.
@@ -149,6 +220,7 @@ export class StreamingDenoiser {
     const slot = frame & 1;
     const targetRe = this.specRe[slot];
     const targetIm = this.specIm[slot];
+
     fftRe.fill(0);
     fftIm.fill(0);
     for (let k = 0; k < BIN_COUNT; k++) {
@@ -171,12 +243,47 @@ export class StreamingDenoiser {
       overlap[i] = Math.fround(overlap[i] + windowed);
     }
 
-    // The current spectrum becomes the look-ahead history for later frames.
+    // The current spectra become the look-ahead history for later frames.
     targetRe.set(curRe);
     targetIm.set(curIm);
 
     const output = this.hopOutput;
     for (let i = 0; i < HOP_SIZE; i++) output[i] = overlap[i];
+
+    this.spectrumValid = false;
+    if (this.captureSpectrum) {
+      // Remember the hop that is emitted this frame.
+      const outputRing = this.outputRing;
+      let write = this.outputRingWrite;
+      for (let i = 0; i < HOP_SIZE; i++) {
+        outputRing[write] = output[i];
+        write += 1;
+        if (write === WINDOW_SIZE) write = 0;
+      }
+      this.outputRingWrite = write;
+
+      if (frame >= SPECTRUM_ALIGN_HOPS) {
+        // Output panel: window and transform the real emitted waveform, after
+        // the synthesis window and overlap-add.
+        fftRe.fill(0);
+        fftIm.fill(0);
+        let read = this.outputRingWrite;
+        for (let i = 0; i < WINDOW_SIZE; i++) {
+          fftRe[i] = Math.fround(outputRing[read] * WINDOW[i]);
+          read += 1;
+          if (read === WINDOW_SIZE) read = 0;
+        }
+        FFT_1024.forward(fftRe, fftIm);
+        fillDbColumn(fftRe, fftIm, SPEC_BINS, SPECTRUM_NORM, this.spectrumOutput);
+
+        // Input panel: the frame whose analysis window covers the same span.
+        this.spectrumInput.set(
+          this.inputHistory[(frame - SPECTRUM_ALIGN_HOPS) % SPECTRUM_HISTORY]
+        );
+        this.spectrumValid = true;
+      }
+    }
+
     overlap.copyWithin(0, HOP_SIZE);
     overlap.fill(0, WINDOW_SIZE - HOP_SIZE);
 
@@ -276,7 +383,12 @@ export class LiveDenoiser {
     const outputRate = Number(options.outputRate) > 0 ? Number(options.outputRate) : SAMPLE_RATE;
     this.inputRate = inputRate;
     this.outputRate = outputRate;
-    this.streaming = new StreamingDenoiser(engine);
+    this.streaming = new StreamingDenoiser(engine, {
+      captureSpectrum: Boolean(options.captureSpectrum),
+      maxAttenuationDb: options.maxAttenuationDb,
+    });
+    this.captureSpectrum = Boolean(options.captureSpectrum);
+    this.onSpectrum = typeof options.onSpectrum === 'function' ? options.onSpectrum : null;
     this.gain = normalizeGain(options.gain);
     this.bypass = Boolean(options.bypass);
     this.down = inputRate === SAMPLE_RATE ? null : new LinearResampler(inputRate, SAMPLE_RATE);
@@ -302,6 +414,10 @@ export class LiveDenoiser {
 
   setGain(value) {
     this.gain = normalizeGain(value);
+  }
+
+  setMaxAttenuationDb(value) {
+    this.streaming.setMaxAttenuationDb(value);
   }
 
   setBypass(value) {
@@ -333,6 +449,9 @@ export class LiveDenoiser {
       this.hop[this.hopFill++] = pcm[i];
       if (this.hopFill === HOP_SIZE) {
         const hopOutput = this.streaming.processHop(this.hop);
+        if (this.captureSpectrum && this.onSpectrum && this.streaming.spectrumValid) {
+          this.onSpectrum(this.streaming);
+        }
         const gain = this.gain;
         if (gain === 1) {
           this._enqueue(hopOutput, HOP_SIZE);

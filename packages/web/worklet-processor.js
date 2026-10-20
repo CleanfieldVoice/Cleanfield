@@ -1,31 +1,36 @@
 /**
  * CleanField Voice 1.0 — live AudioWorklet processor.
  *
- * Runs on the audio render thread.  It receives microphone audio at the
- * AudioContext rate, denoises it hop by hop through the shared `LiveDenoiser`,
- * and writes the result to the output (so the user hears it live).
- *
- * The wasm engine is instantiated *inside* the worklet from `cf_wasm.wasm`.
+ * Runs on the audio render thread: one microphone input, the voice engine, and
+ * the denoised output.  The wasm engine is instantiated *inside* the worklet.
  * AudioWorkletGlobalScope has no `fetch` in current browsers, so the worklet
  * first resolves the wasm URL from its own module URL and asks the page for the
- * bytes (the page fetches that exact URL and transfers the buffer).  In a
- * future browser that exposes `fetch` on the worklet global, the worklet will
- * use `WebAssembly.instantiateStreaming(fetch(url))` directly.
+ * bytes; in a browser that exposes `fetch` on the worklet global, it fetches
+ * directly instead.
+ *
+ * All parameters (bypass, output gain, maximum attenuation) arrive as messages
+ * and are applied without resetting the engine or reloading the model.
  */
 
 import { HOP_SIZE, LATENCY_SAMPLES, SAMPLE_RATE, VoiceEngine } from './dsp.js';
 import { LiveDenoiser } from './live-dsp.js';
+import {
+  SPEC_BATCH_COLUMNS,
+  SPEC_BINS,
+  writeQuantizedColumn,
+} from './spectrogram-core.js';
 
 const WASM_FILE = 'cf_wasm.wasm';
+const RENDER_QUANTUM = 128;
 
 function toDb(value) {
   return value > 0 ? Math.max(-100, 20 * Math.log10(value)) : -100;
 }
 
-function workletWasmUrl(fallback) {
+function resolveSiblingUrl(file, fallback) {
   try {
     if (typeof import.meta !== 'undefined' && import.meta.url) {
-      return import.meta.url.slice(0, import.meta.url.lastIndexOf('/') + 1) + WASM_FILE;
+      return import.meta.url.slice(0, import.meta.url.lastIndexOf('/') + 1) + file;
     }
   } catch {
     // Fall through to the URL supplied by the page.
@@ -33,16 +38,29 @@ function workletWasmUrl(fallback) {
   return fallback || null;
 }
 
+function clampGain(value) {
+  const gain = Number(value);
+  if (!Number.isFinite(gain) || gain < 0) return 1;
+  return Math.min(8, gain);
+}
+
+function clampMaxAttenuationDb(value) {
+  const db = Number(value);
+  if (!Number.isFinite(db)) return -80;
+  return db < -80 ? -80 : db > 0 ? 0 : db;
+}
+
 class LiveDenoiseProcessor extends AudioWorkletProcessor {
   constructor(options) {
     super();
     const processorOptions = (options && options.processorOptions) || {};
-    this.wasmUrl = workletWasmUrl(processorOptions.wasmUrl);
+    this.wasmUrl = resolveSiblingUrl(WASM_FILE, processorOptions.wasmUrl);
     this.engine = null;
     this.live = null;
     this.failed = false;
     this.wasmWaiter = null;
-    this.gain = Number.isFinite(processorOptions.gain) ? processorOptions.gain : 1;
+    this.gain = clampGain(processorOptions.gain);
+    this.maxAttenuationDb = clampMaxAttenuationDb(processorOptions.maxAttenuationDb);
     this.bypass = Boolean(processorOptions.bypass);
     this.latencySamples = LATENCY_SAMPLES;
     this.frames = 0;
@@ -51,7 +69,7 @@ class LiveDenoiseProcessor extends AudioWorkletProcessor {
     this.frameMs = 0;
     this.rtf = 0;
     this.levelBlocks = 0;
-    this.reportEvery = Math.max(1, Math.round((0.1 * sampleRate) / 128));
+    this.reportEvery = Math.max(1, Math.round((0.1 * sampleRate) / RENDER_QUANTUM));
     this.inSquares = 0;
     this.outSquares = 0;
     this.peakIn = 0;
@@ -59,6 +77,9 @@ class LiveDenoiseProcessor extends AudioWorkletProcessor {
     this.levelSamples = 0;
     this.levelIn = -100;
     this.levelOut = -100;
+    // Batched spectrogram columns: [input plane | output plane] per batch.
+    this.specBatch = new Uint8Array(SPEC_BATCH_COLUMNS * SPEC_BINS * 2);
+    this.specCount = 0;
 
     this.port.onmessage = (event) => this.handleMessage(event.data);
     this.port.postMessage({
@@ -83,7 +104,7 @@ class LiveDenoiseProcessor extends AudioWorkletProcessor {
       if (this.wasmWaiter) {
         const waiter = this.wasmWaiter;
         this.wasmWaiter = null;
-        waiter.reject(new Error(message.message || 'Could not load the denoising engine.'));
+        waiter.reject(new Error(message.message || 'Could not load the engine.'));
       }
       return;
     }
@@ -94,8 +115,15 @@ class LiveDenoiseProcessor extends AudioWorkletProcessor {
     }
     if (message.type === 'gain') {
       if (Number.isFinite(message.value)) {
-        this.gain = message.value;
+        this.gain = clampGain(message.value);
         if (this.live) this.live.setGain(this.gain);
+      }
+      return;
+    }
+    if (message.type === 'attenuation') {
+      if (Number.isFinite(message.value)) {
+        this.maxAttenuationDb = clampMaxAttenuationDb(message.value);
+        if (this.live) this.live.setMaxAttenuationDb(this.maxAttenuationDb);
       }
     }
   }
@@ -107,13 +135,13 @@ class LiveDenoiseProcessor extends AudioWorkletProcessor {
       if (typeof fetch === 'function' && typeof WebAssembly.instantiateStreaming === 'function') {
         const response = await fetch(this.wasmUrl);
         if (!response.ok) {
-          throw new Error(`Could not load the denoising engine (HTTP ${response.status}).`);
+          throw new Error(`Could not load the engine (HTTP ${response.status}).`);
         }
         const result = await WebAssembly.instantiateStreaming(response, {});
         instance = result.instance || result;
         source = 'worklet-fetch';
       } else {
-        if (!this.wasmUrl) throw new Error('Could not resolve the denoising engine URL.');
+        if (!this.wasmUrl) throw new Error('Could not resolve the engine URL.');
         const bytes = await this.requestWasm();
         const result = await WebAssembly.instantiate(bytes, {});
         instance = result.instance || result;
@@ -124,14 +152,18 @@ class LiveDenoiseProcessor extends AudioWorkletProcessor {
         inputRate: sampleRate,
         outputRate: sampleRate,
         gain: this.gain,
+        maxAttenuationDb: this.maxAttenuationDb,
         bypass: this.bypass,
+        captureSpectrum: true,
+        onSpectrum: (streaming) => this.captureSpectrum(streaming),
       });
       this.latencySamples = this.live.latencySamples;
+
       this.port.postMessage({
         type: 'ready',
         contextSampleRate: sampleRate,
         wasmSource: source,
-        backend: this.engine.backendName,
+        backend: this.engine.backendName || 'scalar',
         modelBytes: this.engine.modelImageBytes,
         latencySamples: this.latencySamples,
       });
@@ -140,7 +172,7 @@ class LiveDenoiseProcessor extends AudioWorkletProcessor {
       this.port.postMessage({
         type: 'error',
         stage: 'engine',
-        message: error && error.message ? error.message : 'Could not start the denoising engine.',
+        message: error && error.message ? error.message : 'Could not start the engine.',
       });
     }
   }
@@ -150,6 +182,53 @@ class LiveDenoiseProcessor extends AudioWorkletProcessor {
       this.wasmWaiter = { resolve, reject };
       this.port.postMessage({ type: 'need-wasm', url: this.wasmUrl });
     });
+  }
+
+  /**
+   * Quantise one aligned spectrum pair into the batch.  Runs on the audio
+   * thread, but only copies 2 × 513 bytes and does no rendering.
+   */
+  captureSpectrum(streaming) {
+    const capture = streaming.capture || streaming;
+    const column = this.specCount;
+    const base = column * SPEC_BINS;
+    writeQuantizedColumn(capture.spectrumInput, this.specBatch, base);
+    writeQuantizedColumn(
+      capture.spectrumOutput,
+      this.specBatch,
+      SPEC_BATCH_COLUMNS * SPEC_BINS + base
+    );
+    this.specCount += 1;
+    if (this.specCount >= SPEC_BATCH_COLUMNS) this.flushSpectrum();
+  }
+
+  /** Send the batched columns to the page; the main thread only paints. */
+  flushSpectrum() {
+    if (this.specCount === 0) return;
+    const count = this.specCount;
+    this.specCount = 0;
+    const bins = SPEC_BINS;
+    // The batch stores the output plane at a fixed maximum-batch offset so
+    // capture is a plain copy.  A report can flush a partial batch, so move the
+    // output plane down to the count-based offset the packed format expects.
+    if (count < SPEC_BATCH_COLUMNS) {
+      this.specBatch.copyWithin(
+        count * bins,
+        SPEC_BATCH_COLUMNS * bins,
+        SPEC_BATCH_COLUMNS * bins + count * bins
+      );
+    }
+    const packed = this.specBatch.slice(0, count * bins * 2);
+    this.port.postMessage(
+      {
+        type: 'spectrum',
+        count,
+        bins,
+        frames: this.live ? this.live.frames : 0,
+        columns: packed,
+      },
+      [packed.buffer]
+    );
   }
 
   process(inputs, outputs) {
@@ -176,7 +255,7 @@ class LiveDenoiseProcessor extends AudioWorkletProcessor {
       this.port.postMessage({
         type: 'error',
         stage: 'process',
-        message: error && error.message ? error.message : 'Live denoising failed.',
+        message: error && error.message ? error.message : 'Live processing failed.',
       });
       return true;
     }
@@ -223,6 +302,8 @@ class LiveDenoiseProcessor extends AudioWorkletProcessor {
     this.levelSamples = 0;
     this.levelBlocks = 0;
 
+    this.flushSpectrum();
+
     this.port.postMessage({
       type: 'stats',
       frames,
@@ -235,6 +316,7 @@ class LiveDenoiseProcessor extends AudioWorkletProcessor {
       contextSampleRate: sampleRate,
       bypass: this.bypass,
       gain: this.gain,
+      maxAttenuationDb: this.maxAttenuationDb,
       latencySamples: this.latencySamples,
     });
     this.peakIn = 0;

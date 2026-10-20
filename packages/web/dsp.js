@@ -9,12 +9,22 @@
  * Contract:
  *   16 kHz mono, 1024-point FFT, 768-sample periodic Hann window,
  *   256-sample hop, feature ln(|X[k]|^2 + 1e-20) for k = 0..512,
- *   mask[k] = min(sqrt(re[k]^2 + im[k]^2) * gain, 1) from the engine's two
- *   513-value output planes, inverse FFT, overlap-add.
+ *   mask[k] = clamp(sqrt(re[k]^2 + im[k]^2) * gain, floor, 1) from the
+ *   engine's two 513-value output planes, inverse FFT, overlap-add.  The
+ *   floor is the "maximum attenuation" control: 0 dB is a passthrough and
+ *   −80 dB is the full model mask.
  *
  * The fixed analysis latency (768 + 2 * 256 = 1280 samples) is removed from
  * the result, so the returned array is time-aligned with the input.
+ *
+ * The spectrogram panels are fed by transforms of the real audio path.  The
+ * input panel is the windowed analysis spectrum that enters the model; the
+ * output panel is a windowed transform of the 768 most recently emitted output
+ * samples, taken after the synthesis window and overlap-add.  Capture only
+ * computes extra values when it is enabled and never changes an output sample.
  */
+
+import { SPEC_BINS, fillDbColumn } from './spectrogram-core.js';
 
 export const SAMPLE_RATE = 16000;
 export const FFT_SIZE = 1024;
@@ -23,6 +33,18 @@ export const HOP_SIZE = 256;
 export const BIN_COUNT = 513;
 export const LOOKAHEAD_HOPS = 2;
 export const LATENCY_SAMPLES = WINDOW_SIZE + LOOKAHEAD_HOPS * HOP_SIZE;
+/**
+ * How many emitted hops after an input frame its output window is complete.
+ * The input frame's 768-sample analysis window is the same span of audio as the
+ * 768 most recently emitted output samples at that point, so a column can show
+ * both panels for the same instant.  The output hop trails its analysis frame
+ * by `LOOKAHEAD_HOPS`, and the rolling output window trails the emitted hop by
+ * `WINDOW_SIZE / HOP_SIZE - 1` hops.
+ */
+export const SPECTRUM_ALIGN_HOPS =
+  WINDOW_SIZE / HOP_SIZE - 1 + LOOKAHEAD_HOPS; // 4
+/** Ring slots needed to hold the input spectrum until its output window is ready. */
+export const SPECTRUM_HISTORY = SPECTRUM_ALIGN_HOPS + 1; // 5
 export const MODEL_INPUT_LEN = 513;
 export const MODEL_OUTPUT_LEN = 1026;
 export const MAX_DURATION_SECONDS = 30 * 60;
@@ -38,10 +60,67 @@ export const FEATURE_POWER_SCALE = Math.fround(
 );
 export const EPSILON = Math.fround(1e-20);
 export const MASK_GAIN = 1;
-/** 80 dB maximum reduction, matching the reference file pipeline. */
+/**
+ * Deepest mask floor the model path supports: −80 dB, matching the reference
+ * file pipeline.  This is the fixed floor that earlier builds hard-coded; it is
+ * still exact at the default maximum attenuation of −80 dB.
+ */
 export const MASK_FLOOR = Math.fround(10 ** (-80 / 20));
+/** Deepest maximum attenuation the demo exposes, in dB of noise reduction. */
+export const MAX_ATTENUATION_DB = 80;
+/** Default maximum attenuation: the full model mask (the historical output). */
+export const DEFAULT_MAX_ATTENUATION_DB = -MAX_ATTENUATION_DB;
 /** Sum of squared periodic Hann at 75% overlap: 768 * 3/8 / 256 = 9/8. */
 export const SYNTHESIS_SCALE = Math.fround(8 / 9);
+
+/**
+ * Clamp a maximum-attenuation setting to `[-80, 0]` dB, defaulting to −80 dB
+ * for non-numbers.  The value is the mask floor expressed as a maximum
+ * reduction: 0 dB leaves the mask at unity (passthrough), −80 dB applies the
+ * full learned mask down to −80 dB.
+ *
+ * @param {unknown} value
+ * @returns {number}
+ */
+export function normalizeMaxAttenuationDb(value) {
+  const db = Number(value);
+  if (!Number.isFinite(db)) return DEFAULT_MAX_ATTENUATION_DB;
+  return db < -MAX_ATTENUATION_DB ? -MAX_ATTENUATION_DB : db > 0 ? 0 : db;
+}
+
+/**
+ * Convert a maximum-attenuation setting in dB to a mask floor amplitude.
+ *
+ * `floorDb = -80 * s` in the old 0…1 strength notation, so a percentage-style
+ * slider can use `s = -db / 80`.  Both endpoints are exact: 0 dB returns
+ * exactly 1 (passthrough) and −80 dB returns the historical `MASK_FLOOR`
+ * constant, which keeps the default output bit-identical to the previous build.
+ *
+ * @param {number} maxAttenuationDb in `[-80, 0]`
+ * @returns {number} mask floor in `[1e-4, 1]`
+ */
+export function maskFloorForDb(maxAttenuationDb) {
+  const db = normalizeMaxAttenuationDb(maxAttenuationDb);
+  if (db >= 0) return 1;
+  if (db <= -MAX_ATTENUATION_DB) return MASK_FLOOR;
+  return Math.fround(10 ** (db / 20));
+}
+
+/**
+ * Apply the mask floor to one learned mask magnitude.
+ *
+ * The applied mask is `min(max(m, floor), 1)`, evaluated with the same
+ * comparison sequence the fixed −80 dB floor used before this control existed.
+ * A floor of 1 is exactly unity (passthrough); a floor of `MASK_FLOOR` is the
+ * historical full-strength mask.
+ *
+ * @param {number} magnitude `|Y[k]| * MASK_GAIN`, not yet clamped
+ * @param {number} floor from `maskFloorForDb()`
+ * @returns {number}
+ */
+export function applyMaskFloor(magnitude, floor) {
+  return magnitude > floor ? (magnitude < 1 ? magnitude : 1) : floor;
+}
 
 export const WINDOW = (() => {
   const w = new Float32Array(WINDOW_SIZE);
@@ -49,6 +128,18 @@ export const WINDOW = (() => {
     w[i] = Math.fround(0.5 - 0.5 * Math.cos((2 * Math.PI * i) / WINDOW_SIZE));
   }
   return w;
+})();
+
+/**
+ * Scale that turns a windowed-FFT magnitude into full-scale amplitude:
+ * a bin-centred full-scale sine has |X| = sum(w) / 2, so multiplying by
+ * 2 / sum(w) makes it 0 dBFS.  Both spectrogram panels use this scale, so a
+ * full-scale sine reads 0 dBFS in either panel.
+ */
+export const SPECTRUM_NORM = (() => {
+  let sum = 0;
+  for (let i = 0; i < WINDOW_SIZE; i++) sum += WINDOW[i];
+  return 2 / sum;
 })();
 
 const clock =
@@ -348,7 +439,12 @@ function clippedCount(samples, limit = 1) {
  *
  * @param {Float32Array|number[]} input
  * @param {VoiceEngine} engine
- * @param {{onProgress?: (done: number, total: number) => void}} [options]
+ * @param {{onProgress?: (done: number, total: number) => void,
+ *          onSpectrum?: (index: number, inputDb: Float32Array, outputDb: Float32Array) => void,
+ *          maxSpectrumColumns?: number, maxAttenuationDb?: number}} [options]
+ *        `maxAttenuationDb` is the mask floor in dB in `[-80, 0]` (default
+ *        −80 = the full learned mask, 0 = exact passthrough).  The applied
+ *        mask is `min(max(|Y[k]| * MASK_GAIN, 10^(dB/20)), 1)`.
  * @returns {{
  *   samples: Float32Array, frames: number, durationSeconds: number,
  *   processingMs: number, rtf: number, rmsBefore: number, rmsAfter: number,
@@ -359,6 +455,8 @@ function clippedCount(samples, limit = 1) {
 export function processPcm(input, engine, options = {}) {
   if (!(engine instanceof VoiceEngine)) throw fail('The denoising engine is not valid.');
   const source = input instanceof Float32Array ? input : Float32Array.from(input);
+  const maxAttenuationDb = normalizeMaxAttenuationDb(options.maxAttenuationDb);
+  const maskFloor = maskFloorForDb(maxAttenuationDb);
   const length = source.length;
   if (length === 0) {
     return {
@@ -402,6 +500,32 @@ export function processPcm(input, engine, options = {}) {
   const progressEvery = Math.max(1, Math.floor(frames / 50));
   const onProgress = typeof options.onProgress === 'function' ? options.onProgress : null;
 
+  // Optional spectrogram capture.  It reuses values the audio path already
+  // computes and adds exactly one transform (the output panel FFT), which runs
+  // only while capture is enabled.  All buffers are allocated here and reused
+  // for every frame, so enabling capture allocates nothing per frame.
+  const onSpectrum = typeof options.onSpectrum === 'function' ? options.onSpectrum : null;
+  const requestedColumns = Number(options.maxSpectrumColumns);
+  const maxColumns =
+    Number.isFinite(requestedColumns) && requestedColumns >= 1 ? Math.floor(requestedColumns) : 0;
+  const spectrumStride = maxColumns > 0 ? Math.max(1, Math.ceil(frames / maxColumns)) : 1;
+  const spectrumInput = onSpectrum ? new Float32Array(SPEC_BINS) : null;
+  const spectrumOutput = onSpectrum ? new Float32Array(SPEC_BINS) : null;
+  // Columns are averaged over `spectrumStride` frames instead of dropping frames,
+  // otherwise the painted time axis leaves empty columns (visible as dark bands).
+  const spectrumAccIn = onSpectrum ? new Float64Array(SPEC_BINS) : null;
+  const spectrumAccOut = onSpectrum ? new Float64Array(SPEC_BINS) : null;
+  let spectrumPending = 0;
+  // Input spectra wait here until the output window covering the same audio
+  // span has been emitted.  One slot per hop of look-back, plus the slot being
+  // written this frame.
+  const inputHistory = onSpectrum
+    ? Array.from({ length: SPECTRUM_HISTORY }, () => new Float32Array(SPEC_BINS))
+    : null;
+  // The 768 most recently emitted output samples, oldest at outputRingWrite.
+  const outputRing = onSpectrum ? new Float32Array(WINDOW_SIZE) : null;
+  let outputRingWrite = 0;
+
   engine.reset();
   const started = clock();
 
@@ -427,6 +551,18 @@ export function processPcm(input, engine, options = {}) {
       curIm[k] = fftIm[k];
     }
 
+    // Input panel: the windowed analysis spectrum that enters the model.  The
+    // column is emitted later, when the matching output window is available.
+    if (onSpectrum) {
+      fillDbColumn(
+        curRe,
+        curIm,
+        SPEC_BINS,
+        SPECTRUM_NORM,
+        inputHistory[frame % SPECTRUM_HISTORY]
+      );
+    }
+
     // ln(power + epsilon) features, float32 at every rounding boundary.
     for (let k = 0; k < BIN_COUNT; k++) {
       const re = curRe[k];
@@ -444,13 +580,16 @@ export function processPcm(input, engine, options = {}) {
       const power = Math.fround(Math.fround(Math.fround(re * re) + Math.fround(im * im)) + EPSILON);
       const magnitude = Math.fround(Math.sqrt(power));
       const m = Math.fround(magnitude * MASK_GAIN);
-      mask[k] = m > MASK_FLOOR ? (m < 1 ? m : 1) : MASK_FLOOR;
+      // Apply the maximum-attenuation floor.  A −80 dB floor is exactly the
+      // historical fixed floor; a 0 dB floor is exactly unity.
+      mask[k] = applyMaskFloor(m, maskFloor);
     }
 
     // The mask from this frame is applied to the spectrum from two hops ago.
     const slot = frame & 1;
     const targetRe = specRe[slot];
     const targetIm = specIm[slot];
+
     fftRe.fill(0);
     fftIm.fill(0);
     for (let k = 0; k < BIN_COUNT; k++) {
@@ -472,13 +611,65 @@ export function processPcm(input, engine, options = {}) {
       overlap[i] = Math.fround(overlap[i] + windowed);
     }
 
-    // The current spectrum becomes the look-ahead history for later frames.
+    // The current spectra become the look-ahead history for later frames.
     targetRe.set(curRe);
     targetIm.set(curIm);
 
     const outputBase = HOP_SIZE + frame * HOP_SIZE;
     const available = Math.min(HOP_SIZE, totalLength - outputBase);
     for (let i = 0; i < available; i++) output[outputBase + i] = overlap[i];
+
+    if (onSpectrum) {
+      // Remember the hop that is emitted this frame.  The ring always holds
+      // the last 768 output samples, oldest first.
+      const ring = outputRing;
+      let write = outputRingWrite;
+      for (let i = 0; i < HOP_SIZE; i++) {
+        ring[write] = overlap[i];
+        write += 1;
+        if (write === WINDOW_SIZE) write = 0;
+      }
+      outputRingWrite = write;
+
+      if (frame >= SPECTRUM_ALIGN_HOPS) {
+        const column = frame - SPECTRUM_ALIGN_HOPS;
+
+        // Output panel: window and transform the real emitted waveform.  This
+        // is the overlap-add output after the synthesis window, not the masked
+        // analysis spectrum.
+        fftRe.fill(0);
+        fftIm.fill(0);
+        let read = outputRingWrite;
+        for (let i = 0; i < WINDOW_SIZE; i++) {
+          fftRe[i] = Math.fround(ring[read] * WINDOW[i]);
+          read += 1;
+          if (read === WINDOW_SIZE) read = 0;
+        }
+        FFT_1024.forward(fftRe, fftIm);
+        fillDbColumn(fftRe, fftIm, SPEC_BINS, SPECTRUM_NORM, spectrumOutput);
+
+        // Input panel: the frame whose analysis window covers the same audio
+        // span as those 768 output samples.
+        spectrumInput.set(inputHistory[(frame - SPECTRUM_ALIGN_HOPS) % SPECTRUM_HISTORY]);
+
+        for (let k = 0; k < SPEC_BINS; k++) {
+          spectrumAccIn[k] += spectrumInput[k];
+          spectrumAccOut[k] += spectrumOutput[k];
+        }
+        spectrumPending += 1;
+        if (spectrumPending >= spectrumStride) {
+          const inv = 1 / spectrumPending;
+          for (let k = 0; k < SPEC_BINS; k++) {
+            spectrumInput[k] = Math.fround(spectrumAccIn[k] * inv);
+            spectrumOutput[k] = Math.fround(spectrumAccOut[k] * inv);
+            spectrumAccIn[k] = 0;
+            spectrumAccOut[k] = 0;
+          }
+          onSpectrum(column, spectrumInput, spectrumOutput);
+          spectrumPending = 0;
+        }
+      }
+    }
 
     overlap.copyWithin(0, HOP_SIZE);
     overlap.fill(0, WINDOW_SIZE - HOP_SIZE);
