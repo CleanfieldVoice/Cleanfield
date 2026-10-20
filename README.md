@@ -136,30 +136,6 @@ node   conformance/verify.mjs     # wasm module
 
 `RESULT: PASS` means every value of every frame matched bit for bit.
 
-## Repository layout
-
-```
-crates/
-  cf-core/            numeric primitives: FMA, reciprocal table, workspace, SIMD
-  cf-voice/           19-layer noise-suppression graph
-  cf-echo/            89-layer echo-cancellation graph
-  cf-aec/             linear AEC (partitioned-block FDAF)
-  cf-echo-pipeline/   AEC + echo model, end-to-end echo path
-  cf-ffi/             C ABI (cdylib + staticlib)
-  cf-wasm/            WebAssembly build with an embedded model
-  cf-cli/             check / bench / dump / simd-check tooling
-packages/
-  node/               @cleanfield/node (N-API)
-  web/                @cleanfield/web (wasm + AudioWorklet)
-models/               .cfwm containers (voice, echo)
-conformance/          bit-exactness vectors and verifiers
-examples/             native embedding examples (C, Rust, Electron main process)
-web/                  self-contained browser demo (live microphone + file mode)
-assets/audio/         demo clips
-include/              cleanfield.h
-tools/                container builder, table generator, reference exporter
-```
-
 ## Building
 
 ```bash
