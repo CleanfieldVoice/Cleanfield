@@ -1,0 +1,14 @@
+{
+  "name": "@cleanfield/node-linux-arm64",
+  "version": "0.1.3",
+  "description": "CleanField native addon for linux-arm64",
+  "license": "MIT",
+  "os": [
+    "linux"
+  ],
+  "cpu": "arm64",
+  "main": "cf-node.node",
+  "files": [
+    "cf-node.node"
+  ]
+}

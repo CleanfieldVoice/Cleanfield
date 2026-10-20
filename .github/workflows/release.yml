@@ -195,6 +195,34 @@ jobs:
         with:
           name: ${{ matrix.asset }}
           path: dist/${{ matrix.asset }}
+  npm-publish:
+    name: npm (${{ matrix.package }})
+    needs: [node-addon]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { package: web,  dir: packages/web }
+          - { package: node, dir: packages/node }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          registry-url: https://registry.npmjs.org
+      - name: Sync the version with the tag
+        working-directory: ${{ matrix.dir }}
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          node -e "const fs=require('fs');const p=JSON.parse(fs.readFileSync('package.json','utf8'));p.version=process.argv[1];fs.writeFileSync('package.json',JSON.stringify(p,null,2)+'\n')" "$tag"
+          node -e "console.log(require('./package.json').name, require('./package.json').version)"
+      - name: Publish
+        working-directory: ${{ matrix.dir }}
+        run: npm publish --provenance --access public
   publish:
     needs: [build, wasm, android, ios, node-addon]
     runs-on: ubuntu-latest
@@ -210,6 +238,8 @@ jobs:
           files: |
             dist/**/*
             dist/SHA256SUMS
+
+
 
 
 

@@ -53,6 +53,9 @@ function bindingCandidates() {
     candidates.push(process.env.CLEANFIELD_NODE_BINDING);
   }
   candidates.push(path.join(__dirname, 'prebuilds', tag, 'cf-node.node'));
+  if (process.platform === 'darwin') {
+    candidates.push(path.join(__dirname, 'prebuilds', 'darwin-universal', 'cf-node.node'));
+  }
   candidates.push(path.join(__dirname, 'build', 'Release', 'cf-node.node'));
   candidates.push(path.join(root, 'target', triple, 'release', `cf_node${LIBRARY_SUFFIX}`));
   candidates.push(path.join(root, 'target', 'release', `cf_node${LIBRARY_SUFFIX}`));
@@ -175,3 +178,4 @@ function createVoice(options = {}) {
 }
 
 module.exports = { createVoice };
+
