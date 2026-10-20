@@ -206,20 +206,44 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { package: web,  dir: packages/web }
-          - { package: node, dir: packages/node }
+          - { package: web,                 dir: packages/web,                  artifact: "" }
+          - { package: node,                dir: packages/node,                 artifact: "" }
+          - { package: node-win32-x64,      dir: packages/node-win32-x64,       artifact: cf-node-win32-x64.node }
+          - { package: node-win32-arm64,    dir: packages/node-win32-arm64,     artifact: cf-node-win32-arm64.node }
+          - { package: node-darwin-universal, dir: packages/node-darwin-universal, artifact: cf-node-darwin-universal.node }
+          - { package: node-linux-x64,      dir: packages/node-linux-x64,       artifact: cf-node-linux-x64.node }
+          - { package: node-linux-arm64,    dir: packages/node-linux-arm64,     artifact: cf-node-linux-arm64.node }
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: "24"
           registry-url: https://registry.npmjs.org
+      - name: Fetch the platform binary
+        if: matrix.artifact != ''
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: ${{ matrix.dir }}
       - name: Sync the version with the tag
         working-directory: ${{ matrix.dir }}
         run: |
           tag="${GITHUB_REF_NAME#v}"
-          node -e "const fs=require('fs');const p=JSON.parse(fs.readFileSync('package.json','utf8'));p.version=process.argv[1];fs.writeFileSync('package.json',JSON.stringify(p,null,2)+'\n')" "$tag"
-          node -e "console.log(require('./package.json').name, require('./package.json').version)"
+          node -e "
+          const fs = require('fs');
+          const p = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+          p.version = process.argv[1];
+          if (p.optionalDependencies) {
+            for (const k of Object.keys(p.optionalDependencies)) p.optionalDependencies[k] = process.argv[1];
+          }
+          fs.writeFileSync('package.json', JSON.stringify(p, null, 2) + '\n');
+          " "$tag"
+          node -e "const p=require('./package.json');console.log(p.name,p.version)"
+      - name: Normalise the addon name
+        if: matrix.artifact != ''
+        working-directory: ${{ matrix.dir }}
+        run: |
+          if [ -f "${{ matrix.artifact }}" ]; then mv -f "${{ matrix.artifact }}" cf-node.node; fi
       - name: Publish
         working-directory: ${{ matrix.dir }}
         run: npm publish --provenance --access public
@@ -238,6 +262,8 @@ jobs:
           files: |
             dist/**/*
             dist/SHA256SUMS
+
+
 
 
 
