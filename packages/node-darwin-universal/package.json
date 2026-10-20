@@ -13,5 +13,10 @@
   "main": "cf-node.node",
   "files": [
     "cf-node.node"
-  ]
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/CleanfieldVoice/Cleanfield.git",
+    "directory": "packages/node-darwin-universal"
+  }
 }
