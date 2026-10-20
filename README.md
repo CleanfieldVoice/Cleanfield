@@ -3,6 +3,8 @@
 Neural speech enhancement for real-time audio: **noise suppression** and
 **echo cancellation**, running as native code or WebAssembly.
 
+**[Live demo](https://cleanfieldvoice.github.io/Cleanfield/web/)** · **[Before/after examples](https://cleanfieldvoice.github.io/Cleanfield/web/listen.html)**
+
 - **Bit-exact models** — the neural graphs reproduce their reference outputs
   exactly, verified over 60 million intermediate values.
 - **Fast** — 0.068 ms per frame with AVX2, 0.20 ms scalar, ~2–3 ms in the browser.
