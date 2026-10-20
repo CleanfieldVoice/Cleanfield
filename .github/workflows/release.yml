@@ -251,7 +251,20 @@ jobs:
         working-directory: ${{ matrix.dir }}
         run: |
           if [ -f "${{ matrix.artifact }}" ]; then mv -f "${{ matrix.artifact }}" cf-node.node; fi
+      - name: Skip when this version already exists
+        id: exists
+        working-directory: ${{ matrix.dir }}
+        run: |
+          name=$(node -p "require('./package.json').name")
+          version=$(node -p "require('./package.json').version")
+          if npm view "$name@$version" version >/dev/null 2>&1; then
+            echo "already=true" >> "$GITHUB_OUTPUT"
+            echo "$name@$version already exists, skipping"
+          else
+            echo "already=false" >> "$GITHUB_OUTPUT"
+          fi
       - name: Publish
+        if: steps.exists.outputs.already != 'true'
         working-directory: ${{ matrix.dir }}
         run: npm publish --provenance --access public
   publish:
@@ -273,6 +286,7 @@ jobs:
             dist/**/cf_wasm.wasm
             dist/**/worklet-processor.js
             dist/SHA256SUMS
+
 
 
 
