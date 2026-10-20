@@ -7,7 +7,7 @@ Neural speech enhancement for real-time audio: **noise suppression** and
 
 - **Bit-exact models** — the neural graphs reproduce their reference outputs
   exactly, verified over 60 million intermediate values.
-- **Fast** — 0.068 ms per frame with AVX2, 0.20 ms scalar, ~2–3 ms in the browser.
+- **Fast** — well under a millisecond per 16 ms frame on x86, a few milliseconds in the browser.
 - **Allocation-free** — fixed-size workspaces; the steady state never allocates.
 - **Portable** — one C ABI plus Node and browser bindings. No Rust toolchain
   needed to consume it.
@@ -75,18 +75,6 @@ Both models run at 16 kHz, mono, on 16 ms hops and keep state across frames (one
 **Linear AEC** (stage, not a model): partitioned-block frequency-domain adaptive filter, 2048 taps, zero allocations, ~0.2 ms per frame. Measured rooms score 4.1 dB below the synthetic grid, so treat synthetic numbers as an upper bound; see `crates/cf-aec/ROBUSTNESS.md`.
 
 Latency: the AEC adds one 16 ms frame; the neural stage adds a 768-sample window plus 256 samples of look-ahead - 1280 samples (80 ms) in total.
-
-## Performance
-
-AMD Ryzen 5 5600, single thread, full model:
-
-| Backend | ms / frame | fps | Multiple of real time (16 ms) |
-| --- | ---: | ---: | ---: |
-| Voice, AVX2 | 0.068 | 14 700 | 235× |
-| Voice, scalar (FMA) | 0.200 | 5 000 | 80× |
-| Voice, WebAssembly | ~2–3 | 330–480 | 5–8× |
-| Echo, AVX2 | 0.49 | 2 040 | 32× |
-| Linear AEC | 0.20 | 5 000 | 80× |
 
 ## Install
 
