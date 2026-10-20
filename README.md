@@ -13,11 +13,10 @@ Neural speech enhancement for real-time audio: **noise suppression** and
   reference frame for frame.
 
 ## Demo
-**Listen:** <https://cleanfieldvoice.github.io/Cleanfield/assets/audio/> - one page with every
-before/after pair embedded (Chinese first, then English, then echo cancellation).
+**Listen:** [`web/listen.html`](web/listen.html) - the demo's examples page, with every
+before/after pair embedded (Chinese first, then English, then echo cancellation). It is
 
-GitHub strips `<audio>` tags from Markdown, so the clips are linked as files below and
-played on that page. All clips are 8 s, 16 kHz mono, and produced by this project.
+linked from the demo footer and opens from a local server or any static host.
 Eight-second excerpts, 16 kHz mono PCM16, Chinese speech first with English
 counterparts. Use headphones.
 
