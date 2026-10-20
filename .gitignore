@@ -9,3 +9,8 @@ __pycache__/
 *.lib
 *.exp
 *.pdb
+
+# packed artifacts
+*.tgz
+packages/*/prebuilds/
+*.node
