@@ -1,9 +1,11 @@
 name: release
 
 # Builds the prebuilt library matrix and attaches artifacts to a GitHub Release.
-# NOTE: the cross-compilation legs require toolchains that are not available on
-# the development machine; only the Windows x86_64 and wasm legs were built
-# locally. Treat the others as CI-only until a CI run has produced them.
+# All eight targets build on hosted runners; the linux arm64 leg needs the
+# aarch64 cross linker installed below.
+
+permissions:
+  contents: write
 
 on:
   push:
@@ -147,4 +149,6 @@ jobs:
           files: |
             dist/**/*
             dist/SHA256SUMS
+
+
 
