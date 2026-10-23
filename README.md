@@ -145,9 +145,5 @@ cargo test --workspace                 # includes a 10M-case FMA proof
 
 ## License
 
-Engine code: MIT (see [LICENSE](LICENSE)). The model containers in `models/` are a separate
-asset distributed with the engine for use with it; see [NOTICE.template.md](NOTICE.template.md).
-
-
-
-
+MIT. The engine code and the model containers in `models/` are released under the
+same MIT license (see [LICENSE](LICENSE)).

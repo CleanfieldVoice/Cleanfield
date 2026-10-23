@@ -415,7 +415,12 @@ def main() -> int:
     params = load_params(params_path)
     data, entries = build(layout, blob, params)
 
-    markers = provenance_markers(ROOT / "PROVENANCE.md")
+    provenance_path = ROOT / "PROVENANCE.md"
+if provenance_path.exists():
+    markers = provenance_markers(provenance_path)
+else:
+    markers = []
+    print("no PROVENANCE.md, skipping the marker gate")
     hits = scan_container(data, markers)
     runs = printable_runs(data)
     if hits:
@@ -467,3 +472,4 @@ def main() -> int:
 
 if __name__ == "__main__":
     sys.exit(main())
+

@@ -136,7 +136,7 @@ jobs:
           # contain the forbidden strings.
           pattern=$(printf %s YWdvcmF8b29weg== | base64 -d)
           if grep -rIn --exclude-dir=target --exclude-dir=.git --exclude-dir=internal \
-                   --exclude=PROVENANCE.md --exclude='last-result*.json' -i -E "$pattern" .; then
+                   --exclude='last-result*.json' -i -E "$pattern" .; then
             echo "forbidden product name found"; exit 1
           fi
           echo "clean"
@@ -155,6 +155,7 @@ jobs:
           echo "pack ok"
       - name: ABI header present
         run: test -f include/cleanfield.h && grep -q cf_voice_process include/cleanfield.h
+
 
 
 
