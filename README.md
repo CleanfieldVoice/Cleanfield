@@ -76,6 +76,38 @@ Both models run at 16 kHz, mono, on 16 ms hops and keep state across frames (one
 
 Latency: the AEC adds one 16 ms frame; the neural stage adds a 768-sample window plus 256 samples of look-ahead - 1280 samples (80 ms) in total.
 
+## Quality
+
+Ten eight-second clips (five noise types, Chinese and English) scored against the
+clean synthesised speech they were mixed from. PESQ wideband, STOI and SI-SDR are
+computed on the 16 kHz signals; higher is better for all three.
+
+| Set | Metric | Noisy input | CleanField | DeepFilterNet3 |
+| --- | --- | ---: | ---: | ---: |
+| All ten | PESQ | 1.46 | 2.02 | **2.11** |
+| All ten | STOI | 0.911 | **0.948** | 0.924 |
+| All ten | SI-SDR | +9.4 dB | **+17.4 dB** | +12.9 dB |
+| Chinese | PESQ | 1.32 | 1.81 | **1.87** |
+| Chinese | STOI | 0.890 | **0.940** | 0.892 |
+| Chinese | SI-SDR | +8.6 dB | **+17.7 dB** | +12.4 dB |
+| English | PESQ | 1.61 | 2.24 | **2.36** |
+| English | STOI | 0.932 | **0.957** | 0.956 |
+| English | SI-SDR | +10.2 dB | **+17.0 dB** | +13.4 dB |
+
+The two systems trade places by metric. DeepFilterNet3 wins on PESQ, which mostly
+rewards staying close to the reference waveform; this engine wins on STOI and
+SI-SDR, and the gap is largest where the noise is speech-like: on Chinese babble
+STOI is 0.916 here against 0.809 for DeepFilterNet3 (the input is 0.836, so that
+system *lowers* intelligibility there), and on the café scene 0.878 against 0.759.
+In the same two scenes STOI rises by 0.080 and 0.106 over the noisy input here.
+
+Conditions: DeepFilterNet 0.5.6 with the DeepFilterNet3 checkpoint, CPU, run at its
+native 48 kHz and resampled back; this engine at 16 kHz. Both were fed exactly the
+clips shipped in `assets/audio/`, and the clean reference is the window of the
+synthesised speech used to build each clip. RNNoise is not included: neither of the
+two readily available paths produced output on this machine (the Python binding
+fails inside its own frame loop, and the `ffmpeg` `arnndn` filter needs an `.rnnn`
+model file that could not be downloaded).
 ## Install
 
 **C / C++**
@@ -146,3 +178,4 @@ cargo test --workspace                 # includes a 10M-case FMA proof
 
 MIT. The engine code and the model containers in `models/` are released under the
 same MIT license (see [LICENSE](LICENSE)).
+
