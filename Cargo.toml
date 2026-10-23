@@ -14,9 +14,9 @@ members = [
 default-members = ["crates/cf-cli"]
 
 [workspace.package]
-version = "0.1.0"
+version = "0.1.8"
 edition = "2021"
-license = "LicenseRef-Proprietary"
+license = "MIT"
 publish = false
 
 [workspace.dependencies]
@@ -50,3 +50,4 @@ large_enum_variant = "allow"
 manual_unwrap_or = "allow"
 missing_safety_doc = "allow"
 not_unsafe_ptr_arg_deref = "allow"
+
