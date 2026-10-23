@@ -79,35 +79,34 @@ Latency: the AEC adds one 16 ms frame; the neural stage adds a 768-sample window
 ## Quality
 
 Ten eight-second clips (five noise types, Chinese and English) scored against the
-clean synthesised speech they were mixed from. PESQ wideband, STOI and SI-SDR are
-computed on the 16 kHz signals; higher is better for all three.
+clean synthesised speech they were mixed from. PESQ wideband, STOI and SI-SDR, all
+computed at 16 kHz; higher is better for all three.
 
-| Set | Metric | Noisy input | CleanField | DeepFilterNet3 |
-| --- | --- | ---: | ---: | ---: |
-| All ten | PESQ | 1.46 | 2.02 | **2.11** |
-| All ten | STOI | 0.911 | **0.948** | 0.924 |
-| All ten | SI-SDR | +9.4 dB | **+17.4 dB** | +12.9 dB |
-| Chinese | PESQ | 1.32 | 1.81 | **1.87** |
-| Chinese | STOI | 0.890 | **0.940** | 0.892 |
-| Chinese | SI-SDR | +8.6 dB | **+17.7 dB** | +12.4 dB |
-| English | PESQ | 1.61 | 2.24 | **2.36** |
-| English | STOI | 0.932 | **0.957** | 0.956 |
-| English | SI-SDR | +10.2 dB | **+17.0 dB** | +13.4 dB |
+| Set | Metric | Noisy input | RNNoise | DeepFilterNet3 | CleanField |
+| --- | --- | ---: | ---: | ---: | ---: |
+| All ten | PESQ | 1.46 | 1.86 | **2.11** | 2.02 |
+| All ten | STOI | 0.911 | 0.904 | 0.924 | **0.948** |
+| All ten | SI-SDR | +9.4 dB | +10.9 dB | +12.9 dB | **+17.4 dB** |
+| Chinese | PESQ | 1.32 | 1.64 | **1.87** | 1.81 |
+| Chinese | STOI | 0.890 | 0.875 | 0.892 | **0.940** |
+| Chinese | SI-SDR | +8.6 dB | +10.5 dB | +12.4 dB | **+17.7 dB** |
+| English | PESQ | 1.61 | 2.08 | **2.36** | 2.24 |
+| English | STOI | 0.932 | 0.933 | 0.956 | **0.957** |
+| English | SI-SDR | +10.2 dB | +11.2 dB | +13.4 dB | **+17.0 dB** |
 
-The two systems trade places by metric. DeepFilterNet3 wins on PESQ, which mostly
-rewards staying close to the reference waveform; this engine wins on STOI and
-SI-SDR, and the gap is largest where the noise is speech-like: on Chinese babble
-STOI is 0.916 here against 0.809 for DeepFilterNet3 (the input is 0.836, so that
-system *lowers* intelligibility there), and on the café scene 0.878 against 0.759.
-In the same two scenes STOI rises by 0.080 and 0.106 over the noisy input here.
+DeepFilterNet3 wins on PESQ, which mostly rewards staying close to the reference
+waveform. This engine wins on STOI and SI-SDR, and the gap is largest where the
+noise is speech-like. On Chinese babble STOI is 0.916 here, 0.809 for
+DeepFilterNet3 and 0.808 for RNNoise, against 0.836 for the unprocessed input - both
+baselines make that clip less intelligible, while this engine gains 0.080. On the
+café scene the same pattern holds: 0.878 here against 0.759 and 0.756, from 0.772.
 
-Conditions: DeepFilterNet 0.5.6 with the DeepFilterNet3 checkpoint, CPU, run at its
-native 48 kHz and resampled back; this engine at 16 kHz. Both were fed exactly the
-clips shipped in `assets/audio/`, and the clean reference is the window of the
-synthesised speech used to build each clip. RNNoise is not included: neither of the
-two readily available paths produced output on this machine (the Python binding
-fails inside its own frame loop, and the `ffmpeg` `arnndn` filter needs an `.rnnn`
-model file that could not be downloaded).
+Conditions: DeepFilterNet 0.5.6 with the DeepFilterNet3 checkpoint on CPU at its
+native 48 kHz; RNNoise through the `ffmpeg` `arnndn` filter with the `bd.rnnn`
+model, also at 48 kHz, with its output aligned to the reference by cross-correlation
+before scoring (the filter adds latency, and unaligned scores are meaningless).
+Both were fed exactly the clips in `assets/audio/`, and the clean reference is the
+window of synthesised speech each clip was built from.
 ## Install
 
 **C / C++**
@@ -178,4 +177,5 @@ cargo test --workspace                 # includes a 10M-case FMA proof
 
 MIT. The engine code and the model containers in `models/` are released under the
 same MIT license (see [LICENSE](LICENSE)).
+
 
