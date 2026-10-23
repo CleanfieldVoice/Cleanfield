@@ -141,7 +141,6 @@ cargo test --workspace                 # includes a 10M-case FMA proof
 | Document | Contents |
 | --- | --- |
 | [CONTRACT.md](CONTRACT.md) | Frame-level API contract: rates, framing, state, latency, error codes, ABI policy |
-| [NOTICE.template.md](NOTICE.template.md) | Notice fragment for applications that embed the engine |
 
 ## License
 
